@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* Blink animation for loading state */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-blink {
+  animation: blink 1s ease-in-out infinite;
+}
+
+/* Cursor blink for typewriter effect (sharp 0 to 1) */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-cursor-blink {
+  animation: cursor-blink 1s step-end infinite;
+}
