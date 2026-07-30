@@ -1,0 +1,14 @@
+{
+  "name": "Hand Written Digit 0 - 9",
+  "model_name": "LeNet-5",
+  "version": "1",
+  "framework": ["Python", "PyTorch", "Numpy", "Matplotlib"],
+  "image_size": 32,
+  "num_classes": 10,
+  "accuracy": 96.42,
+  "created_at": "2026-07-30",
+  "author": {
+    "name": "Kadek Wira Atmaja",
+    "link_github": "https://github.com/WiraAtma"
+  }
+}

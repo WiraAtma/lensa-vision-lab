@@ -1,0 +1,13 @@
+torch 
+torchvision 
+numpy
+pandas
+matplotlib
+scikit-learn
+jupyter
+ipykernel
+tqdm
+requests
+torchmetrics
+kagglehub
+fastapi[standard]

@@ -1,0 +1,133 @@
+# ======================================================
+# Operating System
+# ======================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ======================================================
+# Python
+# ======================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python Environment
+.env
+.env.*
+!.env.example
+
+# Cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Coverage
+.coverage
+htmlcov/
+
+# ======================================================
+# Frontend (React/Vite)
+# ======================================================
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ======================================================
+# Backend
+# ======================================================
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Upload sementara
+backend/uploads/
+backend/temp/
+
+# SQLite
+backend/*.db
+backend/*.sqlite3
+
+# ======================================================
+# Experiment / Training
+# ======================================================
+
+# Dataset (WAJIB DI-IGNORE)
+experiment/**/data/
+experiment/**/dataset/
+experiment/**/datasets/
+
+experiment/data/
+experiment/dataset/
+experiment/datasets/
+
+# Output Training
+experiment/**/runs/
+experiment/**/logs/
+experiment/**/checkpoints/
+experiment/**/tensorboard/
+experiment/**/wandb/
+
+# Cache
+experiment/**/__pycache__/
+
+# ======================================================
+# Dataset Global
+# ======================================================
+data/
+dataset/
+datasets/
+
+# ======================================================
+# Logs
+# ======================================================
+logs/
+*.log
+
+# ======================================================
+# IDE
+# ======================================================
+.vscode/
+.idea/
+
+# ======================================================
+# Build
+# ======================================================
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ======================================================
+# Temporary
+# ======================================================
+.cache/
+.cache-loader/
+*.tmp
+*.temp
+
+# ======================================================
+# JANGAN IGNORE MODEL
+# ======================================================
+# model_store/
+# backend/models/
+# *.pth
+# *.pt
+# *.onnx
+
+# Semua model tetap ikut Git
