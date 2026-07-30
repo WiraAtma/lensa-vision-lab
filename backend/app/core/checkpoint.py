@@ -1,5 +1,6 @@
 import torch
 
+
 def load_checkpoint(
   model: torch.nn.Module,
   model_path: str,
