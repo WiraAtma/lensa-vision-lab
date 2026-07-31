@@ -93,6 +93,8 @@ experiment/**/__pycache__/
 data/
 dataset/
 datasets/
+!frontend/src/data/
+!frontend/src/data/**
 
 # ======================================================
 # Logs
