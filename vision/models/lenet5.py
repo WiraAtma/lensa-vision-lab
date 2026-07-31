@@ -1,7 +1,7 @@
 # LeNet-5 Architecture Source : https://medium.com/codex/lenet-5-complete-architecture-84c6d08215f9
 
-import torch
 from torch import nn
+
 
 class LeNet5(nn.Module):
   """
