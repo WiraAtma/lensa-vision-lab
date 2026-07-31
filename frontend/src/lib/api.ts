@@ -47,4 +47,21 @@ export async function predictFoodClassification(
   return response.data;
 }
 
+export async function predictSignLanguangeClassification(
+  imageBlob: Blob
+): Promise<PredictionResponse> {
+  const formData = new FormData();
+  formData.append("file", imageBlob, "sign-languange.png");
+
+  const response = await api.post<PredictionResponse>(
+    "/predict/sign_languange_classification",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+
+  return response.data;
+}
+
 export default api;
