@@ -11,3 +11,4 @@ requests
 torchmetrics
 kagglehub
 fastapi[standard]
+scikit-learn
