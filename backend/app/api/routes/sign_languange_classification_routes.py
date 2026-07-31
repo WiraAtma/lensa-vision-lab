@@ -2,10 +2,12 @@ import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.services.handwritten_digit_service import HandwrittenDigitService
+from app.services.sign_languange_classification_service import (
+  SignLanguangeClassificationService,
+)
 
 router = APIRouter()
-service = HandwrittenDigitService()
+service = SignLanguangeClassificationService()
 logger = logging.getLogger(__name__)
 
 @router.post("", status_code=status.HTTP_200_OK)

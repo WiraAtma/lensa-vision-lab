@@ -8,7 +8,7 @@ router = APIRouter()
 service = FoodClassificationService()
 logger = logging.getLogger(__name__)
 
-@router.post("/", status_code=status.HTTP_200_OK)
+@router.post("", status_code=status.HTTP_200_OK)
 async def predict(file: UploadFile = File(...)):  # noqa: B008
   try:
     return await service.predict(file)
