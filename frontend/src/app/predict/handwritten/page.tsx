@@ -5,14 +5,15 @@ import Image from "next/image";
 import DrawingCanvas from "@/components/predict/handwritten/DrawingCanvas";
 import PredictionResult from "@/components/predict/handwritten/PredictionResult";
 import ProbabilityChart from "@/components/predict/handwritten/ProbabilityChart";
-import { usePrediction } from "@/hooks/usePrediction";
 import { InfoModelCanWrong } from "@/components/InfoModelCanWrong";
 import { ModelInfoCard } from "@/components/ModelInfoCard";
 import { ModelClasses } from "@/components/ModelClasses";
 import { HandWrittenClasses } from "@/data/classes";
+import { usePredictionHandwrittenDigit } from "@/hooks/usePredictionHandwrittenDigit";
+import ParticleField from "@/components/ParticleField";
 
 export default function HandwrittenPredictPage() {
-  const { prediction, isLoading, error, predict, reset } = usePrediction();
+  const { prediction, isLoading, error, predict, reset } = usePredictionHandwrittenDigit();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleCanvasChange = (blob: Blob) => {
@@ -37,6 +38,13 @@ export default function HandwrittenPredictPage() {
 
   return (
     <div>
+      {prediction && (
+        <>
+          <ParticleField position="top" />
+          <ParticleField position="bottom" />
+        </>
+      )}
+
       <h1 className="text-2xl font-bold mb-6">Handwritten Digit Prediction</h1>
 
       <ModelInfoCard

@@ -30,4 +30,21 @@ export async function predictHandwrittenDigit(
   return response.data;
 }
 
+export async function predictFoodClassification(
+  imageBlob: Blob
+): Promise<PredictionResponse> {
+  const formData = new FormData();
+  formData.append("file", imageBlob, "food.png");
+
+  const response = await api.post<PredictionResponse>(
+    "/predict/food_classification",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+
+  return response.data;
+}
+
 export default api;

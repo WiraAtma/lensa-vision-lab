@@ -7,6 +7,7 @@ from torchvision import transforms
 
 from app.architectures.efficientnet_b0 import efficientnet_b0
 from app.core import checkpoint
+from app.core.formatter import format_class_name
 from app.core.predict import predict_image
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -54,7 +55,7 @@ class FoodClassificationService:
     )
 
     return {
-      "prediction": CLASS_NAMES[pred],
+      "prediction": format_class_name(CLASS_NAMES[pred]),
       "confidence": round(confidence * 100, 2),
       "probabilities": [
         {

@@ -25,7 +25,7 @@ export default function ProbabilityChart({
   );
 
   const data = {
-    labels: sorted.map((p) => `${p.class}`),
+    labels: sorted.map((p) => `Digit ${p.class}`),
     datasets: [
       {
         label: "Probability (%)",

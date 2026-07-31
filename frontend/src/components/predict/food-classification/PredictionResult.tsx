@@ -31,8 +31,8 @@ export default function PredictionResult({
   }
 
   return (
-    <div className="flex gap-10 items-center">
-      <div>
+    <div className="flex gap-6 items-center">
+      <div className="text-center">
         <p className="text-sm text-neutral-500 mb-1">Prediction</p>
         <div
           className={`text-6xl font-bold ${

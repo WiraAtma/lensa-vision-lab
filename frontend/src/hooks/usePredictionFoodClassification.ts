@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { predictHandwrittenDigit, PredictionResponse } from "@/lib/api";
+import { predictFoodClassification, PredictionResponse } from "@/lib/api";
 
-export function usePrediction() {
+export function usePredictionFoodClassification() {
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function usePrediction() {
     setError(null);
 
     try {
-      const result = await predictHandwrittenDigit(imageBlob);
+      const result = await predictFoodClassification(imageBlob);
       setPrediction(result);
     } catch (err) {
       const message =
