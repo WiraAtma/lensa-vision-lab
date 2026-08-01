@@ -19,7 +19,7 @@ export default function Navbar() {
         className="flex items-center font-semibold text-lg"
       >
         <Lottie
-          className="w-[50px] h-[50px] sm:w-[60px] sm:h-[60px]"
+          className="w-12.5 h-12.5 sm:w-15 sm:h-15"
           animationData={Labs}
         />
         <span>
@@ -34,7 +34,7 @@ export default function Navbar() {
             onClick={() => setIsModalOpen(true)}
             className="hover:text-blue-600 transition-colors"
           >
-            Prediction
+            Search Models
           </button>
           <Link href="/about" className="hover:text-blue-600 transition-colors">
             About Us

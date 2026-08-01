@@ -63,7 +63,7 @@ export default function HandwrittenPredictPage() {
         <div className="flex-1 flex flex-col items-center gap-2 w-full">
           <p className="text-sm text-neutral-500">Predicted Image</p>
           <div
-            className={`w-full max-w-[500px] aspect-square border-2 border-neutral-300 rounded-lg bg-white flex items-center justify-center overflow-hidden ${
+            className={`w-full max-w-125 aspect-square border-2 border-neutral-300 rounded-lg bg-white flex items-center justify-center overflow-hidden ${
               isLoading ? "animate-blink" : ""
             }`}
           >
@@ -117,6 +117,8 @@ export default function HandwrittenPredictPage() {
       )}
 
       <InfoModelCanWrong/>
+
+      <ModelClasses classes={HandWrittenClasses} />
 
       <div className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="text-2xl font-bold mb-6">Model Information</h2>

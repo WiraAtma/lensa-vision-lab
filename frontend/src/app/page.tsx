@@ -1,8 +1,12 @@
+"use client"
+
 import DashboardCard from "@/components/dashboard/DashboardCard";
 import { aiModels } from "@/data/models";
 import { HeaderCard } from "@/components/dashboard/HeaderCard";
 import ParticleField from "@/components/ParticleField";
 import { TechStackImageCard } from "@/components/dashboard/TechStackImageCard";
+import Lottie from "lottie-react";
+import Rocket from "../../public/lotties/rocket.json";
 
 export default function Dashboard() {
   return (
@@ -30,6 +34,13 @@ export default function Dashboard() {
           description="Feature in development"
           href="#"
           className="opacity-60 cursor-default"
+        />
+      </div>
+
+      <div className="flex justify-center my-80">
+        <Lottie
+          animationData={Rocket}
+          className="w-64 h-64"
         />
       </div>
 
@@ -62,6 +73,18 @@ export default function Dashboard() {
           {
             name: "Next.js",
             image: "/techstack/nextjs.png",
+          },
+          {
+            name: "Mediapipe",
+            image: "/techstack/mediapipe.png",
+          },
+          {
+            name: "OpenCV",
+            image: "/techstack/opencv.png",
+          },
+          {
+            name: "YOLO",
+            image: "/techstack/yolo.svg",
           },
         ]}
       />

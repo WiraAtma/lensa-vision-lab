@@ -134,7 +134,7 @@ export default function DrawingCanvas({
         ref={canvasRef}
         width={280}
         height={280}
-        className="w-full max-w-[500px] aspect-square border-2 border-neutral-300 rounded-lg cursor-crosshair touch-none"
+        className="w-full max-w-125 aspect-square border-2 border-neutral-300 rounded-lg cursor-crosshair touch-none"
         style={{ width: '100%', maxWidth: `${width}px`, aspectRatio: '1/1' }}
         onMouseDown={startDrawing}
         onMouseMove={draw}

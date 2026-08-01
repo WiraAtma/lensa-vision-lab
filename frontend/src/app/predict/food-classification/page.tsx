@@ -187,7 +187,7 @@ export default function FoodClassificationPage() {
         <div className="flex-1 flex flex-col items-center gap-2 w-full">
           <p className="text-sm text-neutral-500">Predicted Image</p>
           <div
-            className={`w-full max-w-[500px] aspect-square border-2 border-neutral-300 rounded-lg bg-white flex items-center justify-center overflow-hidden ${
+            className={`w-full max-w-125 aspect-square border-2 border-neutral-300 rounded-lg bg-white flex items-center justify-center overflow-hidden ${
               isLoading ? "animate-blink" : ""
             }`}
           >
@@ -211,10 +211,10 @@ export default function FoodClassificationPage() {
         <div className="flex-1 flex flex-col items-center gap-2 w-full">
           <p className="text-sm text-neutral-500">Upload Here</p>
 
-          <div className="w-full max-w-[500px] aspect-square border-2 border-dashed border-neutral-300 rounded-lg bg-white flex flex-col items-center justify-center gap-4 p-6">
+          <div className="w-full max-w-125 aspect-square border-2 border-dashed border-neutral-300 rounded-lg bg-white flex flex-col items-center justify-center gap-4 p-6">
             {isCameraOpen ? (
               <>
-                <div className="w-full aspect-square max-h-[380px] overflow-hidden rounded-lg bg-black">
+                <div className="w-full aspect-square max-h-95 overflow-hidden rounded-lg bg-black">
                   <video
                     ref={videoRef}
                     autoPlay
@@ -320,6 +320,8 @@ export default function FoodClassificationPage() {
       )}
 
       <InfoModelCanWrong/>
+
+      <ModelClasses classes={FoodClasses} />
 
       <div className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="mb-6 text-2xl font-bold">Model Information</h2>

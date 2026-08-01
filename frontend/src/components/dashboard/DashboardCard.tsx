@@ -36,7 +36,7 @@ export default function DashboardCard({
             />
           ) : (
             <span className="text-4xl text-neutral-400">
-              <Lottie className="w-[140px] sm:w-[180px]" animationData={Developer} />
+              <Lottie className="w-35 sm:w-45" animationData={Developer} />
             </span>
           )}
         </div>

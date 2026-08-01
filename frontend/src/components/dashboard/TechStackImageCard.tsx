@@ -13,7 +13,7 @@ export const TechStackImageCard = ({
   items,
 }: TechStackImageCardProps) => {
   return (
-    <div className="w-full mt-[100px]">
+    <div className="w-full mt-25">
       <div className="mb-8 text-center">
         <h2 className="text-2xl font-bold">
           Technologies We Use
@@ -25,11 +25,11 @@ export const TechStackImageCard = ({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-6">
+      <div className="flex flex-wrap justify-center gap-6 max-w-225 mx-auto">
         {items.map((tech) => (
           <div
             key={tech.name}
-            className="flex flex-col items-center justify-center"
+            className="w-24 flex flex-col items-center"
           >
             <div className="relative h-14 w-14">
               <Image
