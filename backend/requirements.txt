@@ -12,3 +12,8 @@ torchmetrics
 kagglehub
 fastapi[standard]
 scikit-learn
+cvzone
+ultralytics
+opencv-python
+scikit-image
+mediapipe 
