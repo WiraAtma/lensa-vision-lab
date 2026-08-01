@@ -11,6 +11,7 @@ import { ModelClasses } from "@/components/ModelClasses";
 import { HandWrittenClasses } from "@/data/classes";
 import { usePredictionHandwrittenDigit } from "@/hooks/usePredictionHandwrittenDigit";
 import ParticleField from "@/components/ParticleField";
+import { CounterPredict } from "@/components/CounterPredictCard";
 
 export default function HandwrittenPredictPage() {
   const { prediction, isLoading, error, predict, reset } = usePredictionHandwrittenDigit();
@@ -95,32 +96,27 @@ export default function HandwrittenPredictPage() {
         </div>
       </div>
 
-      {/* Error message */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-          {error}
-        </div>
-      )}
+      <CounterPredict
+        isLoading={isLoading}
+        isError={!!error}
+      />
 
-      <InfoModelCanWrong/>
 
-      {/* Prediction Result */}
       <div className="mb-8">
         <PredictionResult
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
-        />
+          />
       </div>
 
-      {/* Probability Chart */}
       {prediction?.probabilities && (
         <div className="border border-neutral-200 rounded-lg p-4 bg-white">
           <ProbabilityChart probabilities={prediction.probabilities} />
         </div>
       )}
 
-      <ModelClasses classes={HandWrittenClasses} />
+      <InfoModelCanWrong/>
 
       <div className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="text-2xl font-bold mb-6">Model Information</h2>

@@ -10,6 +10,7 @@ import { ModelClasses } from "@/components/ModelClasses";
 import { FoodClasses } from "@/data/classes";
 import { usePredictionFoodClassification } from "@/hooks/usePredictionFoodClassification";
 import ParticleField from "@/components/ParticleField";
+import { CounterPredict } from "@/components/CounterPredictCard";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -298,20 +299,18 @@ export default function FoodClassificationPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-          {error}
-        </div>
-      )}
+      <CounterPredict
+        isLoading={isLoading}
+        isError={!!error}
+      />
 
-      <InfoModelCanWrong/>
 
       <div className="mb-8">
         <PredictionResult
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
-        />
+          />
       </div>
 
       {prediction?.probabilities && (
@@ -320,7 +319,7 @@ export default function FoodClassificationPage() {
         </div>
       )}
 
-      <ModelClasses classes={FoodClasses} />
+      <InfoModelCanWrong/>
 
       <div className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="mb-6 text-2xl font-bold">Model Information</h2>

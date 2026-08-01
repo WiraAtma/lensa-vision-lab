@@ -11,6 +11,7 @@ import { ModelClasses } from "@/components/ModelClasses";
 import { SignLanguangeClasses } from "@/data/classes";
 import ParticleField from "@/components/ParticleField";
 import { usePredictionSignLanguangeClassification } from "@/hooks/usePredictionSignLanguangeClassification";
+import { CounterPredict } from "@/components/CounterPredictCard";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -358,7 +359,7 @@ export default function FoodClassificationPage() {
       <ModelInfoCard
         name="Hand Sign Languange Classification"
         architecture="EfficientNet-B0"
-        techstack="Python, PyTorch"
+        techstack="Python, PyTorch, MediaPipe, OpenCV"
         datasets="American Sign Languange (Kaggle)"
         author="Wira Atmaja"
         version="1"
@@ -523,20 +524,18 @@ export default function FoodClassificationPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-          {error}
-        </div>
-      )}
+      <CounterPredict
+        isLoading={isLoading}
+        isError={!!error}
+      />
 
-      <InfoModelCanWrong/>
 
       <div className="mb-8">
         <PredictionResult
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
-        />
+          />
       </div>
 
       {prediction?.probabilities && (
@@ -545,6 +544,8 @@ export default function FoodClassificationPage() {
         </div>
       )}
 
+      <InfoModelCanWrong/>
+      
       <ModelClasses classes={SignLanguangeClasses} />
 
       <div className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
