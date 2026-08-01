@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { HandLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import Image from "next/image";
 import PredictionResult from "@/components/predict/handwritten/PredictionResult";
 import ProbabilityChart from "@/components/predict/handwritten/ProbabilityChart";
@@ -22,15 +23,37 @@ export default function FoodClassificationPage() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
+  // Realtime state
+  const [isRealtimeOpen, setIsRealtimeOpen] = useState(false);
+  const [realtimeError, setRealtimeError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const realtimeVideoRef = useRef<HTMLVideoElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const landmarkerRef = useRef<HandLandmarker | null>(null);
+  const realtimeStreamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastPredictTimeRef = useRef<number>(0);
+  const isPredictingRef = useRef<boolean>(false);
 
-  // Make sure the camera is turned off when the component unmounts
+  const HAND_CONNECTIONS: [number, number][] = [
+    [0, 1], [1, 2], [2, 3], [3, 4],       // ibu jari
+    [0, 5], [5, 6], [6, 7], [7, 8],       // telunjuk
+    [5, 9], [9, 10], [10, 11], [11, 12],  // tengah
+    [9, 13], [13, 14], [14, 15], [15, 16],// manis
+    [13, 17], [17, 18], [18, 19], [19, 20], // kelingking
+    [0, 17],                              // dasar telapak
+  ];
+
+
   useEffect(() => {
     return () => {
       stopCameraStream();
+      handleCloseRealtime();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -96,6 +119,165 @@ export default function FoodClassificationPage() {
         "Unable to access the camera. Please make sure camera permission is granted."
       );
     }
+  };
+
+  const handleOpenRealtime = async () => {
+    setRealtimeError(null);
+    setFileError(null);
+    handleCloseCamera(); // pastikan mode "Take Photo" ketutup dulu
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRealtimeError("Camera is not supported on this device/browser.");
+      return;
+    }
+
+    try {
+      if (!landmarkerRef.current) {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+        );
+        landmarkerRef.current = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          },
+          runningMode: "VIDEO",
+          numHands: 1,
+        });
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+
+      realtimeStreamRef.current = stream;
+      setIsRealtimeOpen(true);
+
+      requestAnimationFrame(() => {
+        if (realtimeVideoRef.current) {
+          realtimeVideoRef.current.srcObject = stream;
+          realtimeVideoRef.current.onloadedmetadata = () => {
+            realtimeVideoRef.current?.play();
+            realtimeLoop();
+          };
+        }
+      });
+    } catch (err) {
+      setRealtimeError(
+        "Unable to access the camera. Please make sure camera permission is granted."
+      );
+    }
+  };
+
+  const handleCloseRealtime = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (realtimeStreamRef.current) {
+      realtimeStreamRef.current.getTracks().forEach((track) => track.stop());
+      realtimeStreamRef.current = null;
+    }
+    setIsRealtimeOpen(false);
+  };
+
+  const realtimeLoop = useCallback(() => {
+    const video = realtimeVideoRef.current;
+    const overlay = overlayCanvasRef.current;
+    const landmarker = landmarkerRef.current;
+
+    if (!video || !overlay || !landmarker || video.readyState < 2) {
+      animationFrameRef.current = requestAnimationFrame(realtimeLoop);
+      return;
+    }
+
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    const result = landmarker.detectForVideo(video, performance.now());
+
+    if (result.landmarks.length > 0) {
+      const landmarks = result.landmarks[0];
+      const xs = landmarks.map((p) => p.x * overlay.width);
+      const ys = landmarks.map((p) => p.y * overlay.height);
+
+      // gambar garis penghubung antar landmark
+      ctx.strokeStyle = "#22c55e";
+      ctx.lineWidth = 2;
+      HAND_CONNECTIONS.forEach(([start, end]) => {
+        ctx.beginPath();
+        ctx.moveTo(xs[start], ys[start]);
+        ctx.lineTo(xs[end], ys[end]);
+        ctx.stroke();
+      });
+
+      // gambar titik di tiap sendi
+      ctx.fillStyle = "#ef4444";
+      landmarks.forEach((_, i) => {
+        ctx.beginPath();
+        ctx.arc(xs[i], ys[i], 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      const pad = 20;
+      const x1 = Math.max(Math.min(...xs) - pad, 0);
+      const y1 = Math.max(Math.min(...ys) - pad, 0);
+      const x2 = Math.min(Math.max(...xs) + pad, overlay.width);
+      const y2 = Math.min(Math.max(...ys) + pad, overlay.height);
+
+      ctx.strokeStyle = "#22c55e";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      const now = performance.now();
+      if (!isPredictingRef.current && now - lastPredictTimeRef.current > 1500) {
+        lastPredictTimeRef.current = now;
+        sendRealtimeCrop(video, x1, y1, x2 - x1, y2 - y1);
+      }
+    }
+
+    animationFrameRef.current = requestAnimationFrame(realtimeLoop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sendRealtimeCrop = async (
+    video: HTMLVideoElement,
+    x: number,
+    y: number,
+    w: number,
+    h: number
+  ) => {
+    const cropCanvas = cropCanvasRef.current;
+    if (!cropCanvas || w <= 0 || h <= 0) return;
+
+    cropCanvas.width = w;
+    cropCanvas.height = h;
+    const ctx = cropCanvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, x, y, w, h, 0, 0, w, h);
+
+    cropCanvas.toBlob(
+      async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `realtime-${Date.now()}.jpg`, {
+          type: "image/jpeg",
+        });
+
+        isPredictingRef.current = true;
+        try {
+          await predict(file);
+        } finally {
+          isPredictingRef.current = false;
+        }
+      },
+      "image/jpeg",
+      0.9
+    );
   };
 
   const handleCloseCamera = () => {
@@ -240,6 +422,36 @@ export default function FoodClassificationPage() {
                   </button>
                 </div>
               </>
+            )  : isRealtimeOpen ? (
+              <>
+                <div className="relative w-full aspect-square max-h-[380px] overflow-hidden rounded-lg bg-black">
+                  <video
+                    ref={realtimeVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  <canvas
+                    ref={overlayCanvasRef}
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  />
+
+                  {prediction && (
+                    <div className="absolute top-2 left-2 rounded bg-black/70 px-3 py-1 text-sm text-lime-400">
+                      {prediction.prediction} ({prediction.confidence}%)
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCloseRealtime}
+                  className="rounded-lg border border-neutral-300 bg-white px-6 py-2 text-neutral-700 text-sm transition hover:bg-neutral-100"
+                >
+                  Stop Realtime
+                </button>
+              </>
             ) : (
               <>
                 <input
@@ -266,6 +478,14 @@ export default function FoodClassificationPage() {
                   >
                     Take Photo
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenRealtime}
+                    className="cursor-pointer rounded-lg border border-neutral-800 bg-white px-6 py-3 text-neutral-800 text-sm transition hover:bg-neutral-100"
+                  >
+                    Realtime Predict Webcam
+                  </button>
                 </div>
 
                 <p className="text-xs text-neutral-500 text-center">
@@ -278,6 +498,10 @@ export default function FoodClassificationPage() {
 
                 {cameraError && (
                   <p className="text-xs text-red-600 text-center">{cameraError}</p>
+                )}
+
+                {realtimeError && (
+                  <p className="text-xs text-red-600 text-center">{realtimeError}</p>
                 )}
 
                 {previewUrl && (
@@ -295,6 +519,7 @@ export default function FoodClassificationPage() {
 
           {/* Hidden canvas, only used to capture a frame from the video */}
           <canvas ref={canvasRef} className="hidden" />
+          <canvas ref={cropCanvasRef} className="hidden" />
         </div>
       </div>
 
