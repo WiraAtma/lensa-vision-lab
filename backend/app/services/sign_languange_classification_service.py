@@ -39,7 +39,7 @@ class SignLanguangeClassificationService:
       )
 
     try:
-      image = Image.open(file.file)
+      image = Image.open(file.file).convert("RGB")
 
     except Exception:  # noqa: BLE001
       raise HTTPException(
