@@ -1,5 +1,3 @@
-from functools import lru_cache
-
 from app.core import checkpoint
 
 
@@ -10,33 +8,27 @@ def create_model_loader(
   device,
   name="MODEL"
 ):
-  """
-  Universal lazy model loader.
 
-  Args:
-    model_builder: function untuk membuat architecture model
-    model_path: lokasi checkpoint
-    device: cpu/cuda
-    name: nama model untuk logging
+  model = None
+  class_names = None
 
-  Returns:
-    function get_model()
-  """
 
-  @lru_cache(maxsize=1)
   def get_model():
+    nonlocal model, class_names
 
-    print(f"========== LOAD {name} ==========")
+    if model is None:
 
-    model, class_names = checkpoint.load_checkpoint(
-      model=model_builder(),
-      model_path=str(model_path),
-      device=device,
-    )
+      print(f"========== LOAD {name} ==========")
 
-    model.eval()
+      model, class_names = checkpoint.load_checkpoint(
+        model=model_builder(),
+        model_path=str(model_path),
+        device=device,
+      )
 
-    print(f"========== {name} READY ==========")
+      model.eval()
+
+      print(f"========== {name} READY ==========")
 
     return model, class_names
 
