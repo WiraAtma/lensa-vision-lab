@@ -13,6 +13,9 @@ import ParticleField from "@/components/ParticleField";
 import { CounterPredict } from "@/components/CounterPredictCard";
 import { usePredictionFacialExpressionsClassification } from "@/hooks/usePredictionFacialExpressionsClassification";
 import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
+import { Wave } from "@/components/Wave";
+import Lottie from "lottie-react";
+import ThinkingAnimation from "../../../../public/lotties/thinking.json";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -500,24 +503,33 @@ export default function FacialExpressionsClassificationPage() {
       <div className="flex flex-col lg:flex-row gap-8 mb-8">
         <div className="flex-1 flex flex-col items-center gap-2 w-full">
           <p className="text-sm text-neutral-500">Predicted Image</p>
-          <div
-            className={`w-full max-w-125 aspect-square border-2 border-neutral-300 rounded-lg bg-white flex items-center justify-center overflow-hidden ${
-              isLoading ? "animate-blink" : ""
-            }`}
-          >
+          <div className="relative w-full max-w-125 aspect-square border-2 border-neutral-300 rounded-lg bg-white flex items-center justify-center overflow-hidden">
             {previewUrl ? (
               <Image
                 src={previewUrl}
-                alt="Uploaded face"
+                alt="Uploaded Hand Sign Languange"
                 width={500}
                 height={500}
-                className="object-contain w-full h-full"
+                className={`object-contain w-full h-full transition-all duration-300 ${
+                  isLoading ? "blur-sm scale-105" : ""
+                }`}
                 unoptimized
               />
             ) : (
               <span className="text-neutral-600 text-sm">
-                Upload a facial expression image →
+                Upload a Hand Sign Languange image
               </span>
+            )}
+
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/30">
+                <Lottie
+                  animationData={ThinkingAnimation}
+                  loop
+                  autoplay
+                  className="w-50 h-50"
+                />
+              </div>
             )}
           </div>
         </div>
@@ -798,6 +810,7 @@ export default function FacialExpressionsClassificationPage() {
           <span>Source Code On GitHub</span>
         </a>
       </div>
+      <Wave/>
     </div>
   );
 }

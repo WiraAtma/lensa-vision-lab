@@ -8,6 +8,7 @@ import { TechStackImageCard } from "@/components/dashboard/TechStackImageCard";
 import Lottie from "lottie-react";
 import Rocket from "../../public/lotties/rocket.json";
 import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
+import { Wave } from "@/components/Wave";
 
 export default function Dashboard() {
   return (
@@ -91,6 +92,8 @@ export default function Dashboard() {
           },
         ]}
       />
+
+      <Wave/>
     </div>
   );
 }
