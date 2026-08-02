@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+from .routes.facial_expressions_classification_routes import (
+  router as facial_expressions_classification_router,
+)
 from .routes.food_classification_routes import router as food_classification_router
 from .routes.handwritten_digit_routes import router as handwritten_digit_router
 from .routes.sign_languange_classification_routes import (
@@ -31,5 +34,11 @@ router.include_router(
 router.include_router(
   router=sign_languange_classification_router,
   prefix="/predict/sign_languange_classification",
-  tags=["Food Classification"]
+  tags=["Sign Languange Classification"]
+)
+
+router.include_router(
+  router=facial_expressions_classification_router,
+  prefix="/predict/facial_expressions_classification",
+  tags=["Facial Expressions Classification"]
 )
