@@ -6,8 +6,8 @@ from PIL import Image
 from torchvision import transforms
 
 from app.architectures.efficientnet_b0 import efficientnet_b0
-from app.core import checkpoint
 from app.core.formatter import format_class_name
+from app.core.model import create_model_loader
 from app.core.predict import predict_image
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -16,10 +16,11 @@ MODEL_PATH = (BASE_DIR / "models" / "sign_languange_classification" / "efficient
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-MODEL, CLASS_NAMES = checkpoint.load_checkpoint(
-  model=efficientnet_b0(num_classes=36),
-  model_path=str(MODEL_PATH),
+get_model = create_model_loader(
+  model_builder=lambda: efficientnet_b0(num_classes=36),
+  model_path=MODEL_PATH,
   device=DEVICE,
+  name="SIGN LANGUANGE CLASSIFICATION MODEL"
 )
 
 predict_transform = transforms.Compose([
@@ -47,19 +48,21 @@ class SignLanguangeClassificationService:
         detail="Invalid image file.",
       )
 
+    model, class_names = get_model()
+
     pred, confidence, top_indices, top_probs = predict_image(
-      model=MODEL,
+      model=model,
       image=image,
       device=DEVICE,
       transform=predict_transform,
     )
 
     return {
-      "prediction": format_class_name(CLASS_NAMES[pred]),
+      "prediction": format_class_name(class_names[pred]),
       "confidence": round(confidence * 100, 2),
       "probabilities": [
         {
-          "class": CLASS_NAMES[idx],
+          "class": class_names[idx],
           "probability": round(prob * 100, 2),
         }
         for idx, prob in zip(top_indices, top_probs)
