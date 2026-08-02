@@ -12,6 +12,7 @@ import { FacialExpressionsClasses } from "@/data/classes";
 import ParticleField from "@/components/ParticleField";
 import { CounterPredict } from "@/components/CounterPredictCard";
 import { usePredictionFacialExpressionsClassification } from "@/hooks/usePredictionFacialExpressionsClassification";
+import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -477,6 +478,7 @@ export default function FacialExpressionsClassificationPage() {
 
   return (
     <div>
+      <ServerStatusIndicator />
       {prediction && (
         <>
           <ParticleField position="top" />

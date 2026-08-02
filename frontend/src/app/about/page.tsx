@@ -4,12 +4,15 @@ import { FaGithub, FaUsers } from "react-icons/fa";
 import Lottie from "lottie-react";
 import CollaborativeWork from "../../../public/lotties/collaborativeWork.json";
 import ParticleField from "@/components/ParticleField";
+import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 
 export default function AboutUs() {
   const repoUrl = "https://github.com/WiraAtma/lensa-vision-lab";
   
   return (
     <div className="relative">
+    <ServerStatusIndicator />
+
     <ParticleField position="top" />
     <ParticleField position="bottom" />
     <div className="max-w-2xl mx-auto py-12 px-6">

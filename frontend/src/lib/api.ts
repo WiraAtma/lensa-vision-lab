@@ -13,6 +13,11 @@ export interface PredictionResponse {
   }[];
 }
 
+export async function pingServer(): Promise<boolean> {
+  const response = await api.get("/");
+  return response.status === 200;
+}
+
 export async function predictHandwrittenDigit(
   imageBlob: Blob
 ): Promise<PredictionResponse> {

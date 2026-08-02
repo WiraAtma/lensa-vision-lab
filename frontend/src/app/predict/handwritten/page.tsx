@@ -12,6 +12,7 @@ import { HandWrittenClasses } from "@/data/classes";
 import { usePredictionHandwrittenDigit } from "@/hooks/usePredictionHandwrittenDigit";
 import ParticleField from "@/components/ParticleField";
 import { CounterPredict } from "@/components/CounterPredictCard";
+import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 
 export default function HandwrittenPredictPage() {
   const { prediction, isLoading, error, predict, reset } = usePredictionHandwrittenDigit();
@@ -39,6 +40,7 @@ export default function HandwrittenPredictPage() {
 
   return (
     <div>
+      <ServerStatusIndicator/>
       {prediction && (
         <>
           <ParticleField position="top" />

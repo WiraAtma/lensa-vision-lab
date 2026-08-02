@@ -12,6 +12,7 @@ import { FoodClasses } from "@/data/classes";
 import { usePredictionFoodClassification } from "@/hooks/usePredictionFoodClassification";
 import ParticleField from "@/components/ParticleField";
 import { CounterPredict } from "@/components/CounterPredictCard";
+import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -551,6 +552,7 @@ export default function FoodClassificationPage() {
 
   return (
     <div>
+      <ServerStatusIndicator />
       {prediction && (
         <>
           <ParticleField position="top" />

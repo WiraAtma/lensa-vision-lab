@@ -7,10 +7,13 @@ import ParticleField from "@/components/ParticleField";
 import { TechStackImageCard } from "@/components/dashboard/TechStackImageCard";
 import Lottie from "lottie-react";
 import Rocket from "../../public/lotties/rocket.json";
+import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 
 export default function Dashboard() {
   return (
     <div className="relative">
+      <ServerStatusIndicator />
+      
       <ParticleField position="top" />
       <ParticleField position="bottom" />
 

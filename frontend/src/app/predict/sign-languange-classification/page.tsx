@@ -12,6 +12,7 @@ import { SignLanguangeClasses } from "@/data/classes";
 import ParticleField from "@/components/ParticleField";
 import { usePredictionSignLanguangeClassification } from "@/hooks/usePredictionSignLanguangeClassification";
 import { CounterPredict } from "@/components/CounterPredictCard";
+import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -483,6 +484,7 @@ export default function FoodClassificationPage() {
 
   return (
     <div>
+      <ServerStatusIndicator />
       {prediction && (
         <>
           <ParticleField position="top" />
