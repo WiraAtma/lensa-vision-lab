@@ -5,7 +5,7 @@ import axios from "axios";
 
 export type ServerStatus = "checking" | "online" | "error";
 
-const RETRY_INTERVAL_MS = 3000;
+const RETRY_INTERVAL_MS = 30000;
 const REQUEST_TIMEOUT_MS = 2500;
 
 export function useServerStatus() {
