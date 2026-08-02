@@ -17,15 +17,22 @@ export const aiModels: AIModel[] = [
   {
     id: "food-classification",
     name: "Food Classification",
-    description: "Upload your favorite food and predict",
+    description: "Scan your favorite food and predict",
     path: "/predict/food-classification",
     image: "/image/food_classification.jpg"
   },
   {
     id: "sign-languange-classification",
     name: "Hand Sign Languange",
-    description: "Upload Hand Sign Languange and predict",
+    description: "Scan Hand Sign Languange and predict",
     path: "/predict/sign-languange-classification",
     image: "/image/sign_languange_classification.jpg"
+  },
+  {
+    id: "facial-expressions-classification",
+    name: "Facial Expressions",
+    description: "Scan your's face expression and predict",
+    path: "/predict/facial-expressions-classification",
+    image: "/image/facial_expressions.jpg"
   },
 ];

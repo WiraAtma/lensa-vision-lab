@@ -11,6 +11,16 @@ export const HandWrittenClasses = [
   "9"
 ]
 
+export const FacialExpressionsClasses = [
+  "angry",
+  "disgust",
+  "fear",
+  "happy",
+  "neutral",
+  "sad",
+  "surprise"
+]
+
 export const SignLanguangeClasses = [
   "0",
   "1",

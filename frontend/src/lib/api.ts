@@ -64,4 +64,21 @@ export async function predictSignLanguangeClassification(
   return response.data;
 }
 
+export async function predictFacialExpressionsClassification(
+  imageBlob: Blob
+): Promise<PredictionResponse> {
+  const formData = new FormData();
+  formData.append("file", imageBlob, "facial-expressions.png");
+
+  const response = await api.post<PredictionResponse>(
+    "/predict/facial_expressions_classification",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+
+  return response.data;
+}
+
 export default api;

@@ -1,30 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ObjectDetector, FilesetResolver } from "@mediapipe/tasks-vision";
+import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
 import Image from "next/image";
 import PredictionResult from "@/components/predict/handwritten/PredictionResult";
 import ProbabilityChart from "@/components/predict/handwritten/ProbabilityChart";
 import { InfoModelCanWrong } from "@/components/InfoModelCanWrong";
 import { ModelInfoCard } from "@/components/ModelInfoCard";
 import { ModelClasses } from "@/components/ModelClasses";
-import { FoodClasses } from "@/data/classes";
-import { usePredictionFoodClassification } from "@/hooks/usePredictionFoodClassification";
+import { FacialExpressionsClasses } from "@/data/classes";
 import ParticleField from "@/components/ParticleField";
 import { CounterPredict } from "@/components/CounterPredictCard";
+import { usePredictionFacialExpressionsClassification } from "@/hooks/usePredictionFacialExpressionsClassification";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
-const OBJECT_DETECTOR_MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
-
-// Kategori COCO yang harus diabaikan karena bukan makanan — kalau orang ikut
-// masuk frame (misalnya lagi pegang piring), jangan sampai dianggap sebagai
-// objek yang mau diprediksi / memicu hit API.
-const IGNORED_CATEGORIES = ["person"];
-
-export default function FoodClassificationPage() {
-  const { prediction, isLoading, error, predict, reset } = usePredictionFoodClassification();
+export default function FacialExpressionsClassificationPage() {
+  const { prediction, isLoading, error, predict, reset } = usePredictionFacialExpressionsClassification();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
@@ -45,8 +37,8 @@ export default function FoodClassificationPage() {
   const realtimeVideoRef = useRef<HTMLVideoElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
-  const objectDetectorRef = useRef<ObjectDetector | null>(null);
-  const imageObjectDetectorRef = useRef<ObjectDetector | null>(null);
+  const faceDetectorRef = useRef<FaceDetector | null>(null);
+  const imageFaceDetectorRef = useRef<FaceDetector | null>(null);
   const realtimeStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastPredictTimeRef = useRef<number>(0);
@@ -54,22 +46,22 @@ export default function FoodClassificationPage() {
 
   // Detector khusus untuk gambar statis (upload / take photo), terpisah dari
   // detector realtime karena running mode-nya beda ("IMAGE" vs "VIDEO").
-  const getImageObjectDetector = async (): Promise<ObjectDetector> => {
-    if (imageObjectDetectorRef.current) return imageObjectDetectorRef.current;
+  const getImageFaceDetector = async (): Promise<FaceDetector> => {
+    if (imageFaceDetectorRef.current) return imageFaceDetectorRef.current;
 
     const vision = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
     );
-    imageObjectDetectorRef.current = await ObjectDetector.createFromOptions(vision, {
+    imageFaceDetectorRef.current = await FaceDetector.createFromOptions(vision, {
       baseOptions: {
-        modelAssetPath: OBJECT_DETECTOR_MODEL_URL,
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
         delegate: "GPU",
       },
       runningMode: "IMAGE",
-      scoreThreshold: 0.3,
-      maxResults: 5,
+      minDetectionConfidence: 0.5,
     });
-    return imageObjectDetectorRef.current;
+    return imageFaceDetectorRef.current;
   };
 
   const loadImageFromFile = (file: File): Promise<HTMLImageElement> => {
@@ -104,98 +96,34 @@ export default function FoodClassificationPage() {
     });
   };
 
-  // Berapa persen minimal lebar/tinggi frame asli yang harus tercakup dalam
-  // hasil crop. Ini mencegah crop yang terlalu agresif — misalnya nasi goreng
-  // yang taburan sayurnya kebetulan terdeteksi sebagai "salad" dengan skor
-  // lebih tinggi daripada nasi gorengnya sendiri (karena COCO tidak punya
-  // kelas "fried rice"), sehingga hanya sayurnya saja yang ke-crop.
-  const MIN_CROP_RATIO = 0.6;
-
-  type DetectionBox = { originX: number; originY: number; width: number; height: number };
-  type DetectionLike = { boundingBox?: DetectionBox; categories?: { categoryName?: string; score?: number }[] };
-
-  // Buang deteksi dengan kategori yang diabaikan (mis. "person"), supaya orang
-  // yang kebetulan ikut ke-frame tidak dianggap sebagai objek makanan.
-  const filterRelevantDetections = <T extends DetectionLike>(detections: T[]): T[] => {
-    return detections.filter((d) => {
-      const label = d.categories?.[0]?.categoryName?.toLowerCase() ?? "";
-      return !IGNORED_CATEGORIES.includes(label);
-    });
-  };
-
-  // Gabungkan bounding box dari SEMUA objek yang terdeteksi (bukan cuma satu
-  // dengan skor tertinggi) jadi satu area crop, lalu pastikan area crop tidak
-  // lebih kecil dari MIN_CROP_RATIO agar seluruh porsi makanan tetap tercakup.
-  const computeCropArea = (
-    detections: DetectionLike[],
-    sourceWidth: number,
-    sourceHeight: number
-  ): { x1: number; y1: number; x2: number; y2: number } | null => {
-    let x1 = Infinity;
-    let y1 = Infinity;
-    let x2 = -Infinity;
-    let y2 = -Infinity;
-
-    detections.forEach((d) => {
-      const box = d.boundingBox;
-      if (!box) return;
-      x1 = Math.min(x1, box.originX);
-      y1 = Math.min(y1, box.originY);
-      x2 = Math.max(x2, box.originX + box.width);
-      y2 = Math.max(y2, box.originY + box.height);
-    });
-
-    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) return null;
-
-    // Padding proporsional terhadap ukuran union box
-    const pad = Math.max(x2 - x1, y2 - y1) * 0.15;
-    x1 -= pad;
-    y1 -= pad;
-    x2 += pad;
-    y2 += pad;
-
-    // Enforce ukuran crop minimum, biar tidak terlalu agresif motong ke satu
-    // sub-objek kecil saja
-    const minW = sourceWidth * MIN_CROP_RATIO;
-    const minH = sourceHeight * MIN_CROP_RATIO;
-
-    if (x2 - x1 < minW) {
-      const cx = (x1 + x2) / 2;
-      x1 = cx - minW / 2;
-      x2 = cx + minW / 2;
-    }
-    if (y2 - y1 < minH) {
-      const cy = (y1 + y2) / 2;
-      y1 = cy - minH / 2;
-      y2 = cy + minH / 2;
-    }
-
-    x1 = Math.max(x1, 0);
-    y1 = Math.max(y1, 0);
-    x2 = Math.min(x2, sourceWidth);
-    y2 = Math.min(y2, sourceHeight);
-
-    return { x1, y1, x2, y2 };
-  };
-
-  // Deteksi objek pada gambar statis lalu crop menggunakan union bounding box
-  // dari semua objek yang terdeteksi. Return null kalau tidak ada objek
-  // terdeteksi, supaya caller bisa fallback ke gambar aslinya.
-  const cropObjectToFile = async (
-    detector: ObjectDetector,
+  // Deteksi wajah pada gambar statis lalu crop. Return null kalau tidak ada
+  // wajah terdeteksi, supaya caller bisa fallback ke gambar aslinya.
+  const cropFaceToFile = async (
+    detector: FaceDetector,
     source: HTMLImageElement | HTMLCanvasElement,
     sourceWidth: number,
     sourceHeight: number,
     prefix: string
   ): Promise<File | null> => {
     const result = detector.detect(source);
-    const relevant = filterRelevantDetections(result.detections);
-    if (!relevant.length) return null;
+    if (!result.detections.length) return null;
 
-    const area = computeCropArea(relevant, sourceWidth, sourceHeight);
-    if (!area) return null;
+    // Ambil wajah dengan skor confidence tertinggi kalau ada lebih dari satu
+    const detection = result.detections.reduce((best, current) => {
+      const bestScore = best.categories?.[0]?.score ?? 0;
+      const currentScore = current.categories?.[0]?.score ?? 0;
+      return currentScore > bestScore ? current : best;
+    });
 
-    const { x1, y1, x2, y2 } = area;
+    const box = detection.boundingBox;
+    if (!box) return null;
+
+    const pad = box.width * 0.2;
+    const x1 = Math.max(box.originX - pad, 0);
+    const y1 = Math.max(box.originY - pad, 0);
+    const x2 = Math.min(box.originX + box.width + pad, sourceWidth);
+    const y2 = Math.min(box.originY + box.height + pad, sourceHeight);
+
     const cropCanvas = document.createElement("canvas");
     cropCanvas.width = x2 - x1;
     cropCanvas.height = y2 - y1;
@@ -207,6 +135,7 @@ export default function FoodClassificationPage() {
     return canvasToFile(cropCanvas, prefix);
   };
 
+  // Make sure the camera is turned off when the component unmounts
   useEffect(() => {
     return () => {
       stopCameraStream();
@@ -239,9 +168,9 @@ export default function FoodClassificationPage() {
     let fileToSend = file;
 
     try {
-      const detector = await getImageObjectDetector();
+      const detector = await getImageFaceDetector();
       const img = await loadImageFromFile(file);
-      const cropped = await cropObjectToFile(
+      const cropped = await cropFaceToFile(
         detector,
         img,
         img.naturalWidth,
@@ -251,10 +180,10 @@ export default function FoodClassificationPage() {
       if (cropped) {
         fileToSend = cropped;
       }
-      // Kalau tidak ada objek terdeteksi, tetap kirim gambar aslinya
-      // supaya user tidak diblok hanya karena deteksi objek meleset.
+      // Kalau tidak ada wajah terdeteksi, tetap kirim gambar aslinya
+      // supaya user tidak diblok hanya karena deteksi wajah meleset.
     } catch (err) {
-      console.error("Object crop failed, sending original image instead:", err);
+      console.error("Face crop failed, sending original image instead:", err);
     }
 
     // Create a preview from the file that will actually be sent
@@ -279,7 +208,7 @@ export default function FoodClassificationPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: "user" },
         audio: false,
       });
 
@@ -313,7 +242,7 @@ export default function FoodClassificationPage() {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: "user" },
         audio: false,
       });
     } catch (err) {
@@ -335,34 +264,34 @@ export default function FoodClassificationPage() {
       }
     });
 
-    // 2) Setelah izin kamera didapat, baru load model object detector-nya.
+    // 2) Setelah izin kamera didapat, baru load model face detector-nya.
     // Kalau ini gagal, jangan biarkan layar realtime "nyangkut" kosong —
     // tutup realtime-nya dan tampilkan pesan error yang jelas.
     try {
-      if (!objectDetectorRef.current) {
+      if (!faceDetectorRef.current) {
         setIsModelLoading(true);
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
         );
-        objectDetectorRef.current = await ObjectDetector.createFromOptions(vision, {
+        faceDetectorRef.current = await FaceDetector.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: OBJECT_DETECTOR_MODEL_URL,
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
             delegate: "GPU",
           },
           runningMode: "VIDEO",
-          scoreThreshold: 0.3,
-          maxResults: 5,
+          minDetectionConfidence: 0.5,
         });
       }
 
       setIsModelLoading(false);
       realtimeLoop();
     } catch (err) {
-      console.error("Failed to load object detector model:", err);
+      console.error("Failed to load face detector model:", err);
       setIsModelLoading(false);
       handleCloseRealtime();
       setRealtimeError(
-        "Failed to load the object detection model. Please check your internet connection and try again."
+        "Failed to load the face detection model. Please check your internet connection and try again."
       );
     }
   };
@@ -383,7 +312,7 @@ export default function FoodClassificationPage() {
   const realtimeLoop = useCallback(() => {
     const video = realtimeVideoRef.current;
     const overlay = overlayCanvasRef.current;
-    const detector = objectDetectorRef.current;
+    const detector = faceDetectorRef.current;
 
     if (!video || !overlay || !detector || video.readyState < 2) {
       animationFrameRef.current = requestAnimationFrame(realtimeLoop);
@@ -398,38 +327,35 @@ export default function FoodClassificationPage() {
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
     const result = detector.detectForVideo(video, performance.now());
-    const relevant = filterRelevantDetections(result.detections);
 
-    if (relevant.length > 0) {
-      const area = computeCropArea(relevant, overlay.width, overlay.height);
+    if (result.detections.length > 0) {
+      // Ambil wajah dengan skor tertinggi
+      const detection = result.detections.reduce((best, current) => {
+        const bestScore = best.categories?.[0]?.score ?? 0;
+        const currentScore = current.categories?.[0]?.score ?? 0;
+        return currentScore > bestScore ? current : best;
+      });
 
-      if (area) {
-        const { x1, y1, x2, y2 } = area;
+      const box = detection.boundingBox;
+      if (box) {
+        const pad = box.width * 0.2;
+        const x1 = Math.max(box.originX - pad, 0);
+        const y1 = Math.max(box.originY - pad, 0);
+        const x2 = Math.min(box.originX + box.width + pad, overlay.width);
+        const y2 = Math.min(box.originY + box.height + pad, overlay.height);
 
-        // gambar kotak tipis untuk tiap objek relevan yang terdeteksi (debug/visual)
-        ctx.strokeStyle = "rgba(34, 197, 94, 0.5)";
-        ctx.lineWidth = 1.5;
-        relevant.forEach((d) => {
-          const box = d.boundingBox;
-          if (!box) return;
-          ctx.strokeRect(box.originX, box.originY, box.width, box.height);
-        });
-
-        // gambar kotak crop final (union + minimum size) yang akan dikirim ke BE
+        // gambar kotak wajah
         ctx.strokeStyle = "#22c55e";
         ctx.lineWidth = 3;
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-        // label semua objek relevan yang terdeteksi
-        const labels = Array.from(
-          new Set(relevant.map((d) => d.categories?.[0]?.categoryName ?? "object"))
-        ).join(", ");
-        ctx.font = "16px sans-serif";
-        const textWidth = ctx.measureText(labels).width;
-        ctx.fillStyle = "rgba(34, 197, 94, 0.85)";
-        ctx.fillRect(x1, Math.max(y1 - 24, 0), textWidth + 12, 22);
-        ctx.fillStyle = "#0a0a0a";
-        ctx.fillText(labels, x1 + 6, Math.max(y1 - 7, 15));
+        // gambar keypoints (mata, hidung, mulut, telinga)
+        ctx.fillStyle = "#ef4444";
+        detection.keypoints?.forEach((kp) => {
+          ctx.beginPath();
+          ctx.arc(kp.x * overlay.width, kp.y * overlay.height, 4, 0, Math.PI * 2);
+          ctx.fill();
+        });
 
         const now = performance.now();
         if (!isPredictingRef.current && now - lastPredictTimeRef.current > 2000) {
@@ -509,11 +435,11 @@ export default function FoodClassificationPage() {
 
     let fileToSend: File;
     try {
-      const detector = await getImageObjectDetector();
-      const cropped = await cropObjectToFile(detector, canvas, width, height, "camera");
+      const detector = await getImageFaceDetector();
+      const cropped = await cropFaceToFile(detector, canvas, width, height, "camera");
       fileToSend = cropped ?? (await canvasToFile(canvas, "camera"));
     } catch (err) {
-      console.error("Object crop failed, sending full frame instead:", err);
+      console.error("Face crop failed, sending full frame instead:", err);
       try {
         fileToSend = await canvasToFile(canvas, "camera");
       } catch {
@@ -558,13 +484,13 @@ export default function FoodClassificationPage() {
         </>
       )}
 
-      <h1 className="text-2xl font-bold mb-6">Food Classification</h1>
+      <h1 className="text-2xl font-bold mb-6">Facial Expressions Classification</h1>
 
       <ModelInfoCard
-        name="Food Classification"
+        name="Facial Expressions Classification"
         architecture="EfficientNet-B0"
-        techstack="Python, PyTorch, MediaPipe"
-        datasets="Food 101"
+        techstack="Python, PyTorch, MediaPipe, OpenCV"
+        datasets="FER-2013 (Kaggle)"
         author="Wira Atmaja"
         version="1"
       />
@@ -580,7 +506,7 @@ export default function FoodClassificationPage() {
             {previewUrl ? (
               <Image
                 src={previewUrl}
-                alt="Uploaded food"
+                alt="Uploaded face"
                 width={500}
                 height={500}
                 className="object-contain w-full h-full"
@@ -588,7 +514,7 @@ export default function FoodClassificationPage() {
               />
             ) : (
               <span className="text-neutral-600 text-sm">
-                Upload a food image →
+                Upload a facial expression image →
               </span>
             )}
           </div>
@@ -645,7 +571,7 @@ export default function FoodClassificationPage() {
                   {isModelLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/60">
                       <span className="text-sm text-white">
-                        Loading object detection model...
+                        Loading face detection model...
                       </span>
                     </div>
                   )}
@@ -673,12 +599,12 @@ export default function FoodClassificationPage() {
                   accept="image/jpeg,image/png"
                   onChange={handleFileChange}
                   className="hidden"
-                  id="food-upload-input"
+                  id="face-upload-input"
                 />
 
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <label
-                    htmlFor="food-upload-input"
+                    htmlFor="face-upload-input"
                     className="cursor-pointer rounded-lg border border-neutral-800 bg-neutral-900 px-6 py-3 text-white text-sm transition hover:bg-neutral-700"
                   >
                     Choose Image
@@ -758,7 +684,7 @@ export default function FoodClassificationPage() {
 
       <InfoModelCanWrong/>
 
-      <ModelClasses classes={FoodClasses} />
+      <ModelClasses classes={FacialExpressionsClasses} />
 
       <div className="mt-10 rounded-lg border border-neutral-200 bg-white p-6">
         <h2 className="mb-6 text-2xl font-bold">Model Information</h2>
@@ -774,8 +700,8 @@ export default function FoodClassificationPage() {
               model leverages the official implementation provided by
               <strong> torchvision.models</strong> together with pretrained ImageNet
               weights. The final classification layer is replaced and the network is
-              fine-tuned to classify food images from the
-              <strong> Food-101</strong> dataset.
+              fine-tuned to classify facial expression images from the
+              <strong> FER-2013</strong> dataset.
             </p>
           </div>
 
@@ -816,10 +742,9 @@ export default function FoodClassificationPage() {
 
             <ul className="mt-3 list-disc space-y-2 pl-5 text-neutral-700">
               <li>
-                A <strong>MediaPipe Object Detector</strong> (EfficientDet-Lite0)
-                runs in the browser to locate the main food item in the frame in
-                real time, so only the cropped region is sent for prediction
-                instead of the full frame.
+                A <strong>MediaPipe Face Detector</strong> (BlazeFace) runs in the
+                browser to locate the face in real time, so only the cropped face
+                region is sent for prediction instead of the full frame.
               </li>
 
               <li>
@@ -840,11 +765,11 @@ export default function FoodClassificationPage() {
 
               <li>
                 The extracted feature representation is passed to a custom classifier
-                that has been fine-tuned for the <strong>Food-101</strong> dataset.
+                that has been fine-tuned for the <strong>FER-2013</strong> dataset.
               </li>
 
               <li>
-                The classifier computes probabilities for each food category, and the
+                The classifier computes probabilities for each facial expression category, and the
                 class with the highest confidence score is returned as the final
                 prediction.
               </li>
@@ -855,7 +780,7 @@ export default function FoodClassificationPage() {
 
       <div className="mt-10">
         <a
-          href="https://github.com/WiraAtma/lensa-vision-lab/blob/main/experiments/food_efficientnet_b0.ipynb"
+          href="https://github.com/WiraAtma/lensa-vision-lab/blob/main/experiments/facial_expression_classification_efficient_b0.ipynb"
           target="_blank"
           rel="noopener noreferrer"
           className="flex w-full items-center justify-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-6 py-4 text-white transition hover:bg-neutral-700"

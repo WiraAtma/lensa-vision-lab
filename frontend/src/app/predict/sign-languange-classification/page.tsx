@@ -15,6 +15,9 @@ import { CounterPredict } from "@/components/CounterPredictCard";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
+const HAND_LANDMARKER_MODEL_URL =
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
 export default function FoodClassificationPage() {
   const { prediction, isLoading, error, predict, reset } = usePredictionSignLanguangeClassification();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -27,6 +30,7 @@ export default function FoodClassificationPage() {
   // Realtime state
   const [isRealtimeOpen, setIsRealtimeOpen] = useState(false);
   const [realtimeError, setRealtimeError] = useState<string | null>(null);
+  const [isModelLoading, setIsModelLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -36,6 +40,7 @@ export default function FoodClassificationPage() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
   const landmarkerRef = useRef<HandLandmarker | null>(null);
+  const imageLandmarkerRef = useRef<HandLandmarker | null>(null);
   const realtimeStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastPredictTimeRef = useRef<number>(0);
@@ -50,6 +55,90 @@ export default function FoodClassificationPage() {
     [0, 17],                              // dasar telapak
   ];
 
+  // Detector khusus untuk gambar statis (upload / take photo), terpisah dari
+  // detector realtime karena running mode-nya beda ("IMAGE" vs "VIDEO").
+  const getImageHandLandmarker = async (): Promise<HandLandmarker> => {
+    if (imageLandmarkerRef.current) return imageLandmarkerRef.current;
+
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+    );
+    imageLandmarkerRef.current = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: HAND_LANDMARKER_MODEL_URL,
+        delegate: "GPU",
+      },
+      runningMode: "IMAGE",
+      numHands: 1,
+    });
+    return imageLandmarkerRef.current;
+  };
+
+  const loadImageFromFile = (file: File): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new window.Image();
+      img.onload = () => {
+        resolve(img);
+        URL.revokeObjectURL(objectUrl);
+      };
+      img.onerror = (err) => {
+        URL.revokeObjectURL(objectUrl);
+        reject(err);
+      };
+      img.src = objectUrl;
+    });
+  };
+
+  const canvasToFile = (canvas: HTMLCanvasElement, prefix: string): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Failed to convert canvas to blob"));
+            return;
+          }
+          resolve(new File([blob], `${prefix}-${Date.now()}.jpg`, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        0.92
+      );
+    });
+  };
+
+  // Deteksi tangan pada gambar statis lalu crop berdasarkan bounding box
+  // landmark tangan. Return null kalau tidak ada tangan terdeteksi, supaya
+  // caller bisa fallback ke gambar aslinya.
+  const cropHandToFile = async (
+    landmarker: HandLandmarker,
+    source: HTMLImageElement | HTMLCanvasElement,
+    sourceWidth: number,
+    sourceHeight: number,
+    prefix: string
+  ): Promise<File | null> => {
+    const result = landmarker.detect(source);
+    if (!result.landmarks.length) return null;
+
+    const landmarks = result.landmarks[0];
+    const xs = landmarks.map((p) => p.x * sourceWidth);
+    const ys = landmarks.map((p) => p.y * sourceHeight);
+
+    const pad = 20;
+    const x1 = Math.max(Math.min(...xs) - pad, 0);
+    const y1 = Math.max(Math.min(...ys) - pad, 0);
+    const x2 = Math.min(Math.max(...xs) + pad, sourceWidth);
+    const y2 = Math.min(Math.max(...ys) + pad, sourceHeight);
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = x2 - x1;
+    cropCanvas.height = y2 - y1;
+    const ctx = cropCanvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.drawImage(source, x1, y1, x2 - x1, y2 - y1, 0, 0, x2 - x1, y2 - y1);
+
+    return canvasToFile(cropCanvas, prefix);
+  };
 
   useEffect(() => {
     return () => {
@@ -66,7 +155,7 @@ export default function FoodClassificationPage() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -80,15 +169,36 @@ export default function FoodClassificationPage() {
 
     setFileError(null);
 
-    // Create a preview from the selected file
-    const url = URL.createObjectURL(file);
+    let fileToSend = file;
+
+    try {
+      const landmarker = await getImageHandLandmarker();
+      const img = await loadImageFromFile(file);
+      const cropped = await cropHandToFile(
+        landmarker,
+        img,
+        img.naturalWidth,
+        img.naturalHeight,
+        "upload"
+      );
+      if (cropped) {
+        fileToSend = cropped;
+      }
+      // Kalau tidak ada tangan terdeteksi, tetap kirim gambar aslinya
+      // supaya user tidak diblok hanya karena deteksi tangan meleset.
+    } catch (err) {
+      console.error("Hand crop failed, sending original image instead:", err);
+    }
+
+    // Create a preview from the file that will actually be sent
+    const url = URL.createObjectURL(fileToSend);
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return url;
     });
 
     // Send to API
-    predict(file);
+    predict(fileToSend);
   };
 
   const handleOpenCamera = async () => {
@@ -132,41 +242,59 @@ export default function FoodClassificationPage() {
       return;
     }
 
+    // 1) Minta izin kamera duluan, sama seperti tombol "Take Photo"
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+    } catch (err) {
+      setRealtimeError(
+        "Unable to access the camera. Please make sure camera permission is granted."
+      );
+      return;
+    }
+
+    realtimeStreamRef.current = stream;
+    setIsRealtimeOpen(true);
+
+    requestAnimationFrame(() => {
+      if (realtimeVideoRef.current) {
+        realtimeVideoRef.current.srcObject = stream;
+        realtimeVideoRef.current.onloadedmetadata = () => {
+          realtimeVideoRef.current?.play();
+        };
+      }
+    });
+
+    // 2) Setelah izin kamera didapat, baru load model hand landmarker-nya.
+    // Kalau ini gagal, jangan biarkan layar realtime "nyangkut" kosong —
+    // tutup realtime-nya dan tampilkan pesan error yang jelas.
     try {
       if (!landmarkerRef.current) {
+        setIsModelLoading(true);
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
         );
         landmarkerRef.current = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            modelAssetPath: HAND_LANDMARKER_MODEL_URL,
+            delegate: "GPU",
           },
           runningMode: "VIDEO",
           numHands: 1,
         });
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-
-      realtimeStreamRef.current = stream;
-      setIsRealtimeOpen(true);
-
-      requestAnimationFrame(() => {
-        if (realtimeVideoRef.current) {
-          realtimeVideoRef.current.srcObject = stream;
-          realtimeVideoRef.current.onloadedmetadata = () => {
-            realtimeVideoRef.current?.play();
-            realtimeLoop();
-          };
-        }
-      });
+      setIsModelLoading(false);
+      realtimeLoop();
     } catch (err) {
+      console.error("Failed to load hand landmarker model:", err);
+      setIsModelLoading(false);
+      handleCloseRealtime();
       setRealtimeError(
-        "Unable to access the camera. Please make sure camera permission is granted."
+        "Failed to load the hand detection model. Please check your internet connection and try again."
       );
     }
   };
@@ -181,6 +309,7 @@ export default function FoodClassificationPage() {
       realtimeStreamRef.current = null;
     }
     setIsRealtimeOpen(false);
+    setIsModelLoading(false);
   };
 
   const realtimeLoop = useCallback(() => {
@@ -236,7 +365,7 @@ export default function FoodClassificationPage() {
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
       const now = performance.now();
-      if (!isPredictingRef.current && now - lastPredictTimeRef.current > 1500) {
+      if (!isPredictingRef.current && now - lastPredictTimeRef.current > 2000) {
         lastPredictTimeRef.current = now;
         sendRealtimeCrop(video, x1, y1, x2 - x1, y2 - y1);
       }
@@ -269,6 +398,13 @@ export default function FoodClassificationPage() {
           type: "image/jpeg",
         });
 
+        // Tampilkan juga foto yang dikirim ke BE di kotak "Predicted Image"
+        const url = URL.createObjectURL(file);
+        setPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+
         isPredictingRef.current = true;
         try {
           await predict(file);
@@ -286,7 +422,7 @@ export default function FoodClassificationPage() {
     setIsCameraOpen(false);
   };
 
-  const handleCapturePhoto = () => {
+  const handleCapturePhoto = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
@@ -303,33 +439,33 @@ export default function FoodClassificationPage() {
 
     ctx.drawImage(video, 0, 0, width, height);
 
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          setCameraError("Failed to capture photo. Please try again.");
-          return;
-        }
+    let fileToSend: File;
+    try {
+      const landmarker = await getImageHandLandmarker();
+      const cropped = await cropHandToFile(landmarker, canvas, width, height, "camera");
+      fileToSend = cropped ?? (await canvasToFile(canvas, "camera"));
+    } catch (err) {
+      console.error("Hand crop failed, sending full frame instead:", err);
+      try {
+        fileToSend = await canvasToFile(canvas, "camera");
+      } catch {
+        setCameraError("Failed to capture photo. Please try again.");
+        return;
+      }
+    }
 
-        const file = new File([blob], `camera-${Date.now()}.jpg`, {
-          type: "image/jpeg",
-        });
+    // Create a preview from the file that will actually be sent
+    const url = URL.createObjectURL(fileToSend);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
 
-        // Create a preview from the captured photo
-        const url = URL.createObjectURL(file);
-        setPreviewUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
+    // Send to API
+    predict(fileToSend);
 
-        // Send to API
-        predict(file);
-
-        // Close the camera after a successful capture
-        handleCloseCamera();
-      },
-      "image/jpeg",
-      0.92
-    );
+    // Close the camera after a successful capture
+    handleCloseCamera();
   };
 
   const handleClear = () => {
@@ -438,7 +574,15 @@ export default function FoodClassificationPage() {
                     className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                   />
 
-                  {prediction && (
+                  {isModelLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                      <span className="text-sm text-white">
+                        Loading hand detection model...
+                      </span>
+                    </div>
+                  )}
+
+                  {!isModelLoading && prediction && (
                     <div className="absolute top-2 left-2 rounded bg-black/70 px-3 py-1 text-sm text-lime-400">
                       {prediction.prediction} ({prediction.confidence}%)
                     </div>
@@ -604,7 +748,13 @@ export default function FoodClassificationPage() {
 
             <ul className="mt-3 list-disc space-y-2 pl-5 text-neutral-700">
               <li>
-                The uploaded or captured image is resized to <strong>224 × 224</strong>{" "}
+                A <strong>MediaPipe Hand Landmarker</strong> runs in the browser
+                to locate the hand in the frame, so only the cropped hand region
+                is sent for prediction instead of the full frame.
+              </li>
+
+              <li>
+                The cropped image is resized to <strong>224 × 224</strong>{" "}
                 pixels, the standard input resolution for EfficientNet-B0.
               </li>
 
