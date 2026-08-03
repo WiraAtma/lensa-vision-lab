@@ -777,7 +777,6 @@ export default function FoodClassificationPage() {
               </div>
             )}
 
-            {/* Restart Predict overlay, muncul di tengah gambar kalau prediksi gagal */}
             {!isLoading && error && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/70 px-4 text-center">
                 <p className="text-sm text-red-600">
@@ -1005,7 +1004,6 @@ export default function FoodClassificationPage() {
             )}
           </div>
 
-          {/* Hidden canvas, only used to capture a frame from the video */}
           <canvas ref={canvasRef} className="hidden" />
           <canvas ref={cropCanvasRef} className="hidden" />
         </div>
@@ -1022,7 +1020,8 @@ export default function FoodClassificationPage() {
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
-          />
+          label="Upload your sign languange"
+        />
       </div>
 
       {prediction?.probabilities && (

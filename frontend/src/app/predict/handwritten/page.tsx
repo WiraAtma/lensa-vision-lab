@@ -119,7 +119,8 @@ export default function HandwrittenPredictPage() {
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
-          />
+          label="Draw a handwritten number on canvas"
+        />
       </div>
 
       {prediction?.probabilities && (

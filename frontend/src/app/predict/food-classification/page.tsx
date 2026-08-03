@@ -800,9 +800,6 @@ export default function FoodClassificationPage() {
     reset();
   };
 
-  // Coba ulang prediksi pakai file terakhir yang berhasil dikirim, tanpa
-  // perlu user upload/ambil foto lagi. Kalau file terakhir sudah tidak ada
-  // (misalnya baru pertama kali buka halaman), fallback ke handleClear.
   const handleRestartPredict = () => {
     if (lastFileRef.current) {
       predict(lastFileRef.current);
@@ -864,7 +861,6 @@ export default function FoodClassificationPage() {
               </div>
             )}
 
-            {/* Restart Predict overlay, muncul di tengah gambar kalau prediksi gagal */}
             {!isLoading && error && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/70 px-4 text-center">
                 <p className="text-sm text-red-600">
@@ -1109,6 +1105,7 @@ export default function FoodClassificationPage() {
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
+          label="Upload your favorite food"
           />
       </div>
 

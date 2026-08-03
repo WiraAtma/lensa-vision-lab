@@ -757,7 +757,7 @@ export default function FacialExpressionsClassificationPage() {
               />
             ) : (
               <span className="text-neutral-600 text-sm">
-                Upload a Hand Sign Languange image
+                Upload a facial expressions image
               </span>
             )}
 
@@ -1017,6 +1017,7 @@ export default function FacialExpressionsClassificationPage() {
           prediction={prediction?.prediction ?? null}
           confidence={prediction?.confidence ?? null}
           isLoading={isLoading}
+          label="Upload your facial expression"
           />
       </div>
 

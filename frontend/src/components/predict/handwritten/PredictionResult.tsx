@@ -1,10 +1,12 @@
 interface PredictionResultProps {
+  label?: string,
   prediction: string | null;
   confidence: number | null;
   isLoading: boolean;
 }
 
 export default function PredictionResult({
+  label = "input",
   prediction,
   confidence,
   isLoading,
@@ -22,7 +24,7 @@ export default function PredictionResult({
               Waiting for input
             </p>
             <p className="text-sm text-neutral-500">
-              Draw a handwritten digit to start prediction.
+              ({label}) to start prediction.
             </p>
           </div>
         </div>
