@@ -12,24 +12,12 @@ export default function PredictionModal({ isOpen, onClose }: PredictionModalProp
   const router = useRouter();
   const modalRef = useRef<HTMLDivElement>(null);
 
-  const allItems = [
-    ...aiModels.map(m => ({ ...m, isComingSoon: false })),
-    { id: "coming-soon", name: "Coming Soon", description: "More models will be added here", path: "#", isComingSoon: true }
-  ];
-
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [search, setSearch] = useState("");
 
-  const comingSoonItem = allItems[allItems.length - 1];
-
-  // Filter berdasarkan search query, tidak peduli huruf besar/kecil.
-  // "Coming Soon" tidak ikut difilter, selalu tampil di paling bawah.
-  const filteredItems = [
-    ...aiModels
-      .map((m) => ({ ...m, isComingSoon: false }))
-      .filter((item) => item.name.toLowerCase().includes(search.trim().toLowerCase())),
-    comingSoonItem,
-  ];
+  const filteredItems = aiModels.filter((item) =>
+    item.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -48,7 +36,7 @@ export default function PredictionModal({ isOpen, onClose }: PredictionModalProp
       } else if (e.key === "Enter") {
         e.preventDefault();
         const selected = filteredItems[selectedIndex];
-        if (selected && !selected.isComingSoon) {
+        if (selected) {
           router.push(selected.path);
           onClose();
         }
@@ -61,12 +49,10 @@ export default function PredictionModal({ isOpen, onClose }: PredictionModalProp
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, selectedIndex, router, onClose, filteredItems.length]);
 
-  // Reset selectedIndex setiap kali hasil pencarian berubah, agar tidak out-of-range
   useEffect(() => {
     setSelectedIndex(0);
   }, [search]);
 
-  // Klik di luar modal (backdrop) akan menutup modal
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
       onClose();
@@ -131,15 +117,17 @@ export default function PredictionModal({ isOpen, onClose }: PredictionModalProp
               <div
                 key={item.id}
                 onClick={() => {
-                  if (!item.isComingSoon) {
+                  if (item.path) {
                     router.push(item.path);
                     onClose();
                   }
                 }}
                 onMouseEnter={() => setSelectedIndex(index)}
-                className={`flex items-center gap-3 w-full h-11 px-3 rounded-md cursor-pointer transition-colors ${
-                  selectedIndex === index ? "bg-blue-50 border border-blue-200" : "hover:bg-neutral-50 border border-transparent"
-                } ${item.isComingSoon ? "opacity-60" : ""}`}
+                className={`flex items-center gap-3 w-full h-11 px-3 rounded-md cursor-pointer transition-all ${
+                  selectedIndex === index
+                    ? "bg-blue-50 border border-blue-200 opacity-100"
+                    : "border border-transparent opacity-60"
+                }`}
               >
                 <div className="w-7 h-7 rounded bg-neutral-200 flex items-center justify-center shrink-0">
                   {item.image ? (

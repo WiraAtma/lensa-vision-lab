@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import PredictionModal from "./PredictionModal";
 import { FaGithub } from "react-icons/fa";
 import { HiBars3, HiXMark } from "react-icons/hi2";
 import Lottie from "lottie-react";
 import Labs from "../../public/lotties/labs.json";
+import { FiSearch } from "react-icons/fi";
 
 export default function Navbar() {
   const repoUrl = "https://github.com/WiraAtma/lensa-vision-lab";
@@ -14,9 +15,38 @@ export default function Navbar() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  const isApple = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isShortcut =
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "k";
+
+      if (!isShortcut) return;
+
+      const target = e.target as HTMLElement;
+      const isTyping =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
+
+      if (isTyping) return;
+
+      e.preventDefault();
+      setIsModalOpen(true);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   return (
     <>
-      <nav className="border-b border-neutral-200">
+      <nav className="sticky top-0 z-50 bg-white border-b border-neutral-200">
         <div className="flex items-center justify-between px-6 py-4">
           {/* Logo */}
           <Link href="/" className="flex items-center font-semibold text-lg">
@@ -33,14 +63,20 @@ export default function Navbar() {
               href="/"
               className="hover:text-blue-600 transition-colors"
             >
-              Home
+              Dashboard
             </Link>
 
             <button
               onClick={() => setIsModalOpen(true)}
-              className="hover:text-blue-600 transition-colors"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-neutral-100 hover:text-blue-600"
             >
-              Search Models
+              <FiSearch className="h-4 w-4 text-neutral-500" />
+
+              <span>Search Models</span>
+
+              <kbd className="ml-1 rounded-md border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
+                {isApple ? "⌘ K" : "Ctrl + K"}
+              </kbd>
             </button>
 
             <Link

@@ -57,6 +57,7 @@ export default function FoodClassificationPage() {
     isChoosingImage || isOpeningGallery || isOpeningCamera || isOpeningRealtime;
 
   const galleryFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const galleryOpenDeferTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -203,20 +204,39 @@ export default function FoodClassificationPage() {
       if (galleryFallbackTimeoutRef.current) {
         clearTimeout(galleryFallbackTimeoutRef.current);
       }
+      if (galleryOpenDeferTimeoutRef.current) {
+        clearTimeout(galleryOpenDeferTimeoutRef.current);
+      }
     };
   }, []);
 
   // Dipanggil pas label "Choose Image" diklik, SEBELUM browser benar-benar
-  // membuka file picker native. Ada juga fallback timeout, jaga-jaga kalau
-  // event "focus" nggak kepicu di browser/webview tertentu.
+  // membuka file picker native.
+  //
+  // FIX: sebelumnya `setIsOpeningGallery(true)` dipanggil di sini secara
+  // SYNCHRONOUS. Karena `isOpeningGallery` dipakai untuk men-disable
+  // `<input type="file">` (lewat `isAnyButtonBusy`), React sempat
+  // flush state update itu SEBELUM browser menjalankan default action dari
+  // <label htmlFor="..."> (yaitu men-trigger klik ke input file-nya).
+  // Akibatnya input keburu ke-disable dan file picker OS gagal terbuka
+  // secara diam-diam (tanpa error). Fix-nya: tunda update state ini ke
+  // task berikutnya (setTimeout 0) supaya default action label sudah
+  // sempat jalan & file picker sudah sempat kebuka duluan.
   const handleChooseImageClick = () => {
-    setIsOpeningGallery(true);
     if (galleryFallbackTimeoutRef.current) {
       clearTimeout(galleryFallbackTimeoutRef.current);
+      galleryFallbackTimeoutRef.current = null;
     }
-    galleryFallbackTimeoutRef.current = setTimeout(() => {
-      setIsOpeningGallery(false);
-    }, 8000);
+    if (galleryOpenDeferTimeoutRef.current) {
+      clearTimeout(galleryOpenDeferTimeoutRef.current);
+    }
+
+    galleryOpenDeferTimeoutRef.current = setTimeout(() => {
+      setIsOpeningGallery(true);
+      galleryFallbackTimeoutRef.current = setTimeout(() => {
+        setIsOpeningGallery(false);
+      }, 8000);
+    }, 0);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -395,10 +415,38 @@ export default function FoodClassificationPage() {
     setFacingMode("environment"); // reset ke kamera belakang buat sesi berikutnya
   };
 
-  // Toggle antara kamera depan ("user") dan belakang ("environment").
-  // Stream lama baru dimatikan SETELAH stream baru berhasil didapat, jadi
-  // kalau device cuma punya satu kamera / gagal switch, kamera lama tetap
-  // jalan dan user dapat pesan error yang jelas alih-alih layar hitam.
+  // Helper: minta stream kamera baru. Coba pakai facingMode EXACT dulu
+  // supaya browser DIPAKSA pindah ke kamera fisik yang berbeda (bukan cuma
+  // "preferensi" yang bisa diabaikan). Kalau device/browser tidak support
+  // constraint "exact" (throw OverconstrainedError), fallback ke facingMode
+  // biasa.
+  const getCameraStream = async (
+    mode: "user" | "environment"
+  ): Promise<MediaStream> => {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: mode } },
+        audio: false,
+      });
+    } catch (err) {
+      return navigator.mediaDevices.getUserMedia({
+        video: { facingMode: mode },
+        audio: false,
+      });
+    }
+  };
+
+  // Toggle antara kamera depan ("user") dan belakang ("environment") untuk
+  // mode Realtime.
+  //
+  // FIX: sebelumnya stream baru diminta SEBELUM stream lama dimatikan.
+  // Banyak HP (terutama iOS Safari, dan sejumlah Android/Chrome) cuma
+  // mengizinkan SATU stream kamera aktif dalam satu waktu — jadi request
+  // kedua bakal gagal atau malah balikin kamera yang SAMA lagi (karena
+  // facingMode cuma dianggap preferensi, bukan constraint mutlak), sehingga
+  // kelihatan seperti "tombol switch tidak berfungsi". Fix-nya: matikan
+  // stream lama dulu, baru request stream baru, dan minta pakai facingMode
+  // "exact" supaya benar-benar dipaksa pindah kamera.
   const handleSwitchCamera = async () => {
     if (!realtimeStreamRef.current || isSwitchingCamera) return;
 
@@ -406,13 +454,13 @@ export default function FoodClassificationPage() {
     setIsSwitchingCamera(true);
     setRealtimeError(null);
 
-    try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextFacingMode },
-        audio: false,
-      });
+    // Lepas kamera lama dulu supaya hardware-nya bebas dipakai stream baru.
+    realtimeStreamRef.current.getTracks().forEach((track) => track.stop());
+    realtimeStreamRef.current = null;
 
-      realtimeStreamRef.current.getTracks().forEach((track) => track.stop());
+    try {
+      const newStream = await getCameraStream(nextFacingMode);
+
       realtimeStreamRef.current = newStream;
       setFacingMode(nextFacingMode);
 
@@ -427,6 +475,21 @@ export default function FoodClassificationPage() {
       setRealtimeError(
         "Unable to switch camera. This device might only have one camera."
       );
+
+      // Kita sudah terlanjur matiin stream lama, jadi coba pulihkan supaya
+      // user tidak ditinggal dengan layar kamera mati total.
+      try {
+        const restoredStream = await getCameraStream(facingMode);
+        realtimeStreamRef.current = restoredStream;
+        if (realtimeVideoRef.current) {
+          realtimeVideoRef.current.srcObject = restoredStream;
+          realtimeVideoRef.current.onloadedmetadata = () => {
+            realtimeVideoRef.current?.play();
+          };
+        }
+      } catch (restoreErr) {
+        console.error("Failed to restore previous camera:", restoreErr);
+      }
     } finally {
       setIsSwitchingCamera(false);
     }
@@ -546,8 +609,10 @@ export default function FoodClassificationPage() {
   };
 
   // Toggle antara kamera depan/belakang untuk mode "Take Photo" (non-realtime).
-  // Sama seperti versi realtime: stream lama baru dimatikan setelah stream
-  // baru berhasil didapat, biar aman kalau device cuma punya satu kamera.
+  // Sama seperti versi realtime: kamera lama dimatikan DULU sebelum minta
+  // stream baru, dan facingMode diminta dengan "exact" (fallback ke
+  // non-exact) supaya benar-benar pindah kamera fisik, bukan cuma preferensi
+  // yang bisa diabaikan oleh browser.
   const handleSwitchPhotoCamera = async () => {
     if (!streamRef.current || isSwitchingPhotoCamera) return;
 
@@ -555,13 +620,12 @@ export default function FoodClassificationPage() {
     setIsSwitchingPhotoCamera(true);
     setCameraError(null);
 
-    try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextFacingMode },
-        audio: false,
-      });
+    streamRef.current.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
 
-      streamRef.current.getTracks().forEach((track) => track.stop());
+    try {
+      const newStream = await getCameraStream(nextFacingMode);
+
       streamRef.current = newStream;
       setPhotoFacingMode(nextFacingMode);
 
@@ -573,6 +637,16 @@ export default function FoodClassificationPage() {
       setCameraError(
         "Unable to switch camera. This device might only have one camera."
       );
+
+      try {
+        const restoredStream = await getCameraStream(photoFacingMode);
+        streamRef.current = restoredStream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = restoredStream;
+        }
+      } catch (restoreErr) {
+        console.error("Failed to restore previous camera:", restoreErr);
+      }
     } finally {
       setIsSwitchingPhotoCamera(false);
     }
@@ -883,12 +957,22 @@ export default function FoodClassificationPage() {
                     type="button"
                     onClick={handleOpenRealtime}
                     disabled={isAnyButtonBusy}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-800 bg-white px-6 py-3 text-neutral-800 text-sm transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-800 bg-white px-6 py-3 text-sm text-neutral-800 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isOpeningRealtime && (
-                      <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                    {isOpeningRealtime ? (
+                      <>
+                        <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                        Opening Webcam...
+                      </>
+                    ) : (
+                      <>
+                        <span className="relative flex h-3 w-3">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60 animate-ping" />
+                          <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
+                        </span>
+                        Realtime Predict Webcam
+                      </>
                     )}
-                    {isOpeningRealtime ? "Opening Webcam..." : "Realtime Predict Webcam"}
                   </button>
                 </div>
 
