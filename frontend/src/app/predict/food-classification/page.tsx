@@ -16,17 +16,36 @@ import { ServerStatusIndicator } from "@/components/ServerStatusIndicator";
 import { Wave } from "@/components/Wave";
 import Lottie from "lottie-react";
 import ThinkingAnimation from "../../../../public/lotties/thinking.json";
-
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
+import { FiRefreshCw } from "react-icons/fi";
+import { IoCameraReverse } from "react-icons/io5";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
 const OBJECT_DETECTOR_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
 
-// Kategori COCO yang harus diabaikan karena bukan makanan — kalau orang ikut
-// masuk frame (misalnya lagi pegang piring), jangan sampai dianggap sebagai
-// objek yang mau diprediksi / memicu hit API.
-const IGNORED_CATEGORIES = ["person"];
+// Whitelist kategori COCO yang relevan sama makanan/minuman. Dipakai sebagai
+// filter POSITIF (bukan blacklist) supaya hal-hal non-makanan yang sering ikut
+// ke-frame — orang, HP, kursi, meja, remote, dsb — otomatis nggak pernah
+// dianggap sebagai objek yang mau diprediksi / dipakai buat nge-crop, walaupun
+// nanti model EfficientDet nambah kategori baru di masa depan.
+const FOOD_RELATED_CATEGORIES = [
+  "banana",
+  "apple",
+  "sandwich",
+  "orange",
+  "broccoli",
+  "carrot",
+  "hot dog",
+  "pizza",
+  "donut",
+  "cake",
+  "bowl",
+  "cup",
+  "wine glass",
+  "bottle",
+];
 
 export default function FoodClassificationPage() {
   const { prediction, isLoading, error, predict, reset } = usePredictionFoodClassification();
@@ -36,11 +55,30 @@ export default function FoodClassificationPage() {
   // Camera state
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [photoFacingMode, setPhotoFacingMode] = useState<"user" | "environment">("environment");
+  const [isSwitchingPhotoCamera, setIsSwitchingPhotoCamera] = useState(false);
 
   // Realtime state
   const [isRealtimeOpen, setIsRealtimeOpen] = useState(false);
   const [realtimeError, setRealtimeError] = useState<string | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(false);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+
+  // Button-level loading state, buat kasih feedback visual di device yang
+  // lemot pas nunggu file dialog / permission kamera / model object detector.
+  // isOpeningGallery: dari saat tombol "Choose Image" diklik sampai popup
+  // galeri native benar-benar kebuka & ketutup (di-approx pakai window focus,
+  // karena browser bakal blur window pas file picker OS kebuka).
+  const [isChoosingImage, setIsChoosingImage] = useState(false);
+  const [isOpeningGallery, setIsOpeningGallery] = useState(false);
+  const [isOpeningCamera, setIsOpeningCamera] = useState(false);
+  const [isOpeningRealtime, setIsOpeningRealtime] = useState(false);
+
+  const isAnyButtonBusy =
+    isChoosingImage || isOpeningGallery || isOpeningCamera || isOpeningRealtime;
+
+  const galleryFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,6 +94,10 @@ export default function FoodClassificationPage() {
   const animationFrameRef = useRef<number | null>(null);
   const lastPredictTimeRef = useRef<number>(0);
   const isPredictingRef = useRef<boolean>(false);
+
+  // Simpan file terakhir yang dikirim ke API supaya tombol "Restart Predict"
+  // bisa langsung coba ulang tanpa minta user upload/ambil foto lagi.
+  const lastFileRef = useRef<File | null>(null);
 
   // Detector khusus untuk gambar statis (upload / take photo), terpisah dari
   // detector realtime karena running mode-nya beda ("IMAGE" vs "VIDEO").
@@ -111,7 +153,7 @@ export default function FoodClassificationPage() {
 
   // Berapa persen minimal lebar/tinggi frame asli yang harus tercakup dalam
   // hasil crop. Ini mencegah crop yang terlalu agresif — misalnya nasi goreng
-  // yang taburan sayurnya kebetulan terdeteksi sebagai "salad" dengan skor
+  // yang taburan sayurnya kebetulan terdeteksi sebagai "broccoli" dengan skor
   // lebih tinggi daripada nasi gorengnya sendiri (karena COCO tidak punya
   // kelas "fried rice"), sehingga hanya sayurnya saja yang ke-crop.
   const MIN_CROP_RATIO = 0.6;
@@ -119,12 +161,14 @@ export default function FoodClassificationPage() {
   type DetectionBox = { originX: number; originY: number; width: number; height: number };
   type DetectionLike = { boundingBox?: DetectionBox; categories?: { categoryName?: string; score?: number }[] };
 
-  // Buang deteksi dengan kategori yang diabaikan (mis. "person"), supaya orang
-  // yang kebetulan ikut ke-frame tidak dianggap sebagai objek makanan.
+  // Cuma pertahankan deteksi yang masuk whitelist FOOD_RELATED_CATEGORIES,
+  // supaya objek non-makanan yang kebetulan ikut ke-frame — orang, HP, kursi,
+  // meja, remote, laptop, dll — nggak pernah dianggap sebagai objek makanan
+  // dan nggak ikut memicu crop / hit API.
   const filterRelevantDetections = <T extends DetectionLike>(detections: T[]): T[] => {
     return detections.filter((d) => {
       const label = d.categories?.[0]?.categoryName?.toLowerCase() ?? "";
-      return !IGNORED_CATEGORIES.includes(label);
+      return FOOD_RELATED_CATEGORIES.includes(label);
     });
   };
 
@@ -227,6 +271,40 @@ export default function FoodClassificationPage() {
     }
   };
 
+  // Saat popup "pilih foto" bawaan OS kebuka, window ini bakal kehilangan
+  // focus. Pas popup itu ditutup (baik user pilih file ataupun cancel),
+  // window dapat focus lagi — momen itu kita pakai buat matiin spinner.
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      setIsOpeningGallery(false);
+      if (galleryFallbackTimeoutRef.current) {
+        clearTimeout(galleryFallbackTimeoutRef.current);
+        galleryFallbackTimeoutRef.current = null;
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      if (galleryFallbackTimeoutRef.current) {
+        clearTimeout(galleryFallbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Dipanggil pas label "Choose Image" diklik, SEBELUM browser benar-benar
+  // membuka file picker native. Ada juga fallback timeout, jaga-jaga kalau
+  // event "focus" nggak kepicu di browser/webview tertentu.
+  const handleChooseImageClick = () => {
+    setIsOpeningGallery(true);
+    if (galleryFallbackTimeoutRef.current) {
+      clearTimeout(galleryFallbackTimeoutRef.current);
+    }
+    galleryFallbackTimeoutRef.current = setTimeout(() => {
+      setIsOpeningGallery(false);
+    }, 8000);
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -240,6 +318,12 @@ export default function FoodClassificationPage() {
     }
 
     setFileError(null);
+    setIsOpeningGallery(false);
+    if (galleryFallbackTimeoutRef.current) {
+      clearTimeout(galleryFallbackTimeoutRef.current);
+      galleryFallbackTimeoutRef.current = null;
+    }
+    setIsChoosingImage(true);
 
     let fileToSend = file;
 
@@ -256,7 +340,7 @@ export default function FoodClassificationPage() {
       if (cropped) {
         fileToSend = cropped;
       }
-      // Kalau tidak ada objek terdeteksi, tetap kirim gambar aslinya
+      // Kalau tidak ada objek makanan terdeteksi, tetap kirim gambar aslinya
       // supaya user tidak diblok hanya karena deteksi objek meleset.
     } catch (err) {
       console.error("Object crop failed, sending original image instead:", err);
@@ -270,21 +354,25 @@ export default function FoodClassificationPage() {
     });
 
     // Send to API
+    lastFileRef.current = fileToSend;
+    setIsChoosingImage(false);
     predict(fileToSend);
   };
 
   const handleOpenCamera = async () => {
     setCameraError(null);
     setFileError(null);
+    setIsOpeningCamera(true);
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError("Camera is not supported on this device/browser.");
+      setIsOpeningCamera(false);
       return;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: photoFacingMode },
         audio: false,
       });
 
@@ -296,21 +384,25 @@ export default function FoodClassificationPage() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
+        setIsOpeningCamera(false);
       });
     } catch (err) {
       setCameraError(
         "Unable to access the camera. Please make sure camera permission is granted."
       );
+      setIsOpeningCamera(false);
     }
   };
 
   const handleOpenRealtime = async () => {
     setRealtimeError(null);
     setFileError(null);
+    setIsOpeningRealtime(true);
     handleCloseCamera(); // pastikan mode "Take Photo" ketutup dulu
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setRealtimeError("Camera is not supported on this device/browser.");
+      setIsOpeningRealtime(false);
       return;
     }
 
@@ -318,13 +410,14 @@ export default function FoodClassificationPage() {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode },
         audio: false,
       });
     } catch (err) {
       setRealtimeError(
         "Unable to access the camera. Please make sure camera permission is granted."
       );
+      setIsOpeningRealtime(false);
       return;
     }
 
@@ -361,10 +454,12 @@ export default function FoodClassificationPage() {
       }
 
       setIsModelLoading(false);
+      setIsOpeningRealtime(false);
       realtimeLoop();
     } catch (err) {
       console.error("Failed to load object detector model:", err);
       setIsModelLoading(false);
+      setIsOpeningRealtime(false);
       handleCloseRealtime();
       setRealtimeError(
         "Failed to load the object detection model. Please check your internet connection and try again."
@@ -383,6 +478,45 @@ export default function FoodClassificationPage() {
     }
     setIsRealtimeOpen(false);
     setIsModelLoading(false);
+    setIsSwitchingCamera(false);
+    setFacingMode("environment"); // reset ke kamera belakang buat sesi berikutnya
+  };
+
+  // Toggle antara kamera depan ("user") dan belakang ("environment").
+  // Stream lama baru dimatikan SETELAH stream baru berhasil didapat, jadi
+  // kalau device cuma punya satu kamera / gagal switch, kamera lama tetap
+  // jalan dan user dapat pesan error yang jelas alih-alih layar hitam.
+  const handleSwitchCamera = async () => {
+    if (!realtimeStreamRef.current || isSwitchingCamera) return;
+
+    const nextFacingMode = facingMode === "user" ? "environment" : "user";
+    setIsSwitchingCamera(true);
+    setRealtimeError(null);
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextFacingMode },
+        audio: false,
+      });
+
+      realtimeStreamRef.current.getTracks().forEach((track) => track.stop());
+      realtimeStreamRef.current = newStream;
+      setFacingMode(nextFacingMode);
+
+      if (realtimeVideoRef.current) {
+        realtimeVideoRef.current.srcObject = newStream;
+        realtimeVideoRef.current.onloadedmetadata = () => {
+          realtimeVideoRef.current?.play();
+        };
+      }
+    } catch (err) {
+      console.error("Failed to switch camera:", err);
+      setRealtimeError(
+        "Unable to switch camera. This device might only have one camera."
+      );
+    } finally {
+      setIsSwitchingCamera(false);
+    }
   };
 
   const realtimeLoop = useCallback(() => {
@@ -478,6 +612,7 @@ export default function FoodClassificationPage() {
           return url;
         });
 
+        lastFileRef.current = file;
         isPredictingRef.current = true;
         try {
           await predict(file);
@@ -493,6 +628,41 @@ export default function FoodClassificationPage() {
   const handleCloseCamera = () => {
     stopCameraStream();
     setIsCameraOpen(false);
+    setIsSwitchingPhotoCamera(false);
+    setPhotoFacingMode("environment"); // reset ke kamera belakang buat sesi berikutnya
+  };
+
+  // Toggle antara kamera depan/belakang untuk mode "Take Photo" (non-realtime).
+  // Sama seperti versi realtime: stream lama baru dimatikan setelah stream
+  // baru berhasil didapat, biar aman kalau device cuma punya satu kamera.
+  const handleSwitchPhotoCamera = async () => {
+    if (!streamRef.current || isSwitchingPhotoCamera) return;
+
+    const nextFacingMode = photoFacingMode === "user" ? "environment" : "user";
+    setIsSwitchingPhotoCamera(true);
+    setCameraError(null);
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextFacingMode },
+        audio: false,
+      });
+
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = newStream;
+      setPhotoFacingMode(nextFacingMode);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+      }
+    } catch (err) {
+      console.error("Failed to switch camera:", err);
+      setCameraError(
+        "Unable to switch camera. This device might only have one camera."
+      );
+    } finally {
+      setIsSwitchingPhotoCamera(false);
+    }
   };
 
   const handleCapturePhoto = async () => {
@@ -535,6 +705,7 @@ export default function FoodClassificationPage() {
     });
 
     // Send to API
+    lastFileRef.current = fileToSend;
     predict(fileToSend);
 
     // Close the camera after a successful capture
@@ -548,10 +719,22 @@ export default function FoodClassificationPage() {
     });
     setFileError(null);
     setCameraError(null);
+    lastFileRef.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
     reset();
+  };
+
+  // Coba ulang prediksi pakai file terakhir yang berhasil dikirim, tanpa
+  // perlu user upload/ambil foto lagi. Kalau file terakhir sudah tidak ada
+  // (misalnya baru pertama kali buka halaman), fallback ke handleClear.
+  const handleRestartPredict = () => {
+    if (lastFileRef.current) {
+      predict(lastFileRef.current);
+    } else {
+      handleClear();
+    }
   };
 
   return (
@@ -606,6 +789,23 @@ export default function FoodClassificationPage() {
                 />
               </div>
             )}
+
+            {/* Restart Predict overlay, muncul di tengah gambar kalau prediksi gagal */}
+            {!isLoading && error && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/70 px-4 text-center">
+                <p className="text-sm text-red-600">
+                  Failed to get a prediction. Please try again.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRestartPredict}
+                  className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-5 py-2 text-white text-sm transition hover:bg-neutral-700"
+                >
+                  <FiRefreshCw className="h-4 w-4" />
+                  Restart Predict
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -615,7 +815,7 @@ export default function FoodClassificationPage() {
           <div className="w-full max-w-125 aspect-square border-2 border-dashed border-neutral-300 rounded-lg bg-white flex flex-col items-center justify-center gap-4 p-6">
             {isCameraOpen ? (
               <>
-                <div className="w-full aspect-square max-h-95 overflow-hidden rounded-lg bg-black">
+                <div className="relative w-full aspect-square max-h-95 overflow-hidden rounded-lg bg-black">
                   <video
                     ref={videoRef}
                     autoPlay
@@ -623,6 +823,25 @@ export default function FoodClassificationPage() {
                     muted
                     className="w-full h-full object-cover"
                   />
+
+                  <button
+                    type="button"
+                    onClick={handleSwitchPhotoCamera}
+                    disabled={isSwitchingPhotoCamera}
+                    aria-label="Switch camera"
+                    title={
+                      photoFacingMode === "user"
+                        ? "Switch to back camera"
+                        : "Switch to front camera"
+                    }
+                    className="absolute top-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSwitchingPhotoCamera ? (
+                      <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <IoCameraReverse className="h-5 w-5" />
+                    )}
+                  </button>
                 </div>
 
                 <div className="flex gap-3">
@@ -659,6 +878,7 @@ export default function FoodClassificationPage() {
 
                   {isModelLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                      <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin text-white" />
                       <span className="text-sm text-white">
                         Loading object detection model...
                       </span>
@@ -669,6 +889,27 @@ export default function FoodClassificationPage() {
                     <div className="absolute top-2 left-2 rounded bg-black/70 px-3 py-1 text-sm text-lime-400">
                       {prediction.prediction} ({prediction.confidence}%)
                     </div>
+                  )}
+
+                  {!isModelLoading && (
+                    <button
+                      type="button"
+                      onClick={handleSwitchCamera}
+                      disabled={isSwitchingCamera}
+                      aria-label="Switch camera"
+                      title={
+                        facingMode === "user"
+                          ? "Switch to back camera"
+                          : "Switch to front camera"
+                      }
+                      className="absolute top-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSwitchingCamera ? (
+                        <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <IoCameraReverse className="h-5 w-5" />
+                      )}
+                    </button>
                   )}
                 </div>
 
@@ -689,30 +930,52 @@ export default function FoodClassificationPage() {
                   onChange={handleFileChange}
                   className="hidden"
                   id="food-upload-input"
+                  disabled={isAnyButtonBusy}
                 />
 
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <label
                     htmlFor="food-upload-input"
-                    className="cursor-pointer rounded-lg border border-neutral-800 bg-neutral-900 px-6 py-3 text-white text-sm transition hover:bg-neutral-700"
+                    onClick={handleChooseImageClick}
+                    aria-disabled={isAnyButtonBusy}
+                    className={`flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-6 py-3 text-white text-sm transition ${
+                      isAnyButtonBusy
+                        ? "cursor-not-allowed opacity-60 pointer-events-none"
+                        : "cursor-pointer hover:bg-neutral-700"
+                    }`}
                   >
-                    Choose Image
+                    {(isOpeningGallery || isChoosingImage) && (
+                      <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                    )}
+                    {isChoosingImage
+                      ? "Processing..."
+                      : isOpeningGallery
+                      ? "Opening Gallery..."
+                      : "Choose Image"}
                   </label>
 
                   <button
                     type="button"
                     onClick={handleOpenCamera}
-                    className="cursor-pointer rounded-lg border border-neutral-800 bg-white px-6 py-3 text-neutral-800 text-sm transition hover:bg-neutral-100"
+                    disabled={isAnyButtonBusy}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-800 bg-white px-6 py-3 text-neutral-800 text-sm transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Take Photo
+                    {isOpeningCamera && (
+                      <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                    )}
+                    {isOpeningCamera ? "Opening Camera..." : "Take Photo"}
                   </button>
 
                   <button
                     type="button"
                     onClick={handleOpenRealtime}
-                    className="cursor-pointer rounded-lg border border-neutral-800 bg-white px-6 py-3 text-neutral-800 text-sm transition hover:bg-neutral-100"
+                    disabled={isAnyButtonBusy}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-800 bg-white px-6 py-3 text-neutral-800 text-sm transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Realtime Predict Webcam
+                    {isOpeningRealtime && (
+                      <AiOutlineLoading3Quarters className="h-4 w-4 animate-spin" />
+                    )}
+                    {isOpeningRealtime ? "Opening Webcam..." : "Realtime Predict Webcam"}
                   </button>
                 </div>
 
@@ -834,7 +1097,8 @@ export default function FoodClassificationPage() {
                 A <strong>MediaPipe Object Detector</strong> (EfficientDet-Lite0)
                 runs in the browser to locate the main food item in the frame in
                 real time, so only the cropped region is sent for prediction
-                instead of the full frame.
+                instead of the full frame. Non-food objects — people, phones,
+                furniture, and so on — are filtered out and ignored.
               </li>
 
               <li>
